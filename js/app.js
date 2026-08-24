@@ -2,7 +2,7 @@ import { supabase } from './supabaseClient.js';
 document.documentElement.dataset.theme = localStorage.getItem('theme') || 'light';
 const vehicles = async () => (await supabase.from('vehicles').select('*').order('created_at', { ascending: false })).data || [];
 const logs = async () => (await supabase.from('car_logbook').select('*').order('created_at', { ascending: false })).data || [];
-const money = value => `KES ${Number(value).toLocaleString('en-KE', { maximumFractionDigits: 0 })}`;
+const money = value => `ZAR ${Number(value).toLocaleString('en-ZA', { maximumFractionDigits: 0 })}`;
 const dateText = value => new Date(value).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 const vehicle = (list, id) => list.find(item => item.id === id);
 const escapeHtml = value => String(value).replace(/[&<>'"]/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[character]);

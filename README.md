@@ -10,6 +10,12 @@ Open `html/index.html` in a browser, sign in with any valid-looking email and a 
 
 Run [`supabase/schema.sql`](supabase/schema.sql) in the Supabase SQL Editor first. It creates both tables, indexes, validation constraints, per-user row-level security policies, and the cascade that removes a vehicle's fuel logs when that vehicle is removed. Number plates are unique per user, ignoring case and surrounding spaces.
 
+For an existing database, run [`supabase/add_vehicle_mileage.sql`](supabase/add_vehicle_mileage.sql) to add the vehicle odometer column. New cars require their current mileage, new fill-ups prefill the previous mileage from that car, and each saved fill-up advances the car's stored mileage.
+
+Run [`supabase/add_fuel_type.sql`](supabase/add_fuel_type.sql) as well if the cloud table was created before fuel types were added. New fill-ups calculate total cost from litres and price in ZAR, store the fuel type, and include it in reports and CSV downloads. The supported fuel grades are Petrol 93, Petrol 95, Diesel PPM500, Diesel PPM50, and Diesel PPM10.
+
+Run [`supabase/restrict_fuel_types.sql`](supabase/restrict_fuel_types.sql) to restrict cloud records to Petrol 93, Petrol 95, Diesel PPM500, Diesel PPM50, and Diesel PPM10. Existing unsupported values are migrated to Petrol 93 before the constraint is applied.
+
 The vehicle policies require `auth.uid()` to match `vehicles.user_id`, and the log policies verify ownership through the linked vehicle. Anonymous users have no table privileges, so users can only see cars belonging to their own authenticated account.
 
 `js/supabaseClient.js` contains the Supabase client entry point. Provide `window.SUPABASE_URL` and `window.SUPABASE_ANON_KEY` before loading the app, then replace the demo handlers in `auth.js`, `vehicles.js`, `logbook.js`, and `report.js` with queries against the exported client. The current static frontend remains in local-storage demo mode until those handlers are connected.
