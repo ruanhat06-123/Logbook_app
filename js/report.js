@@ -24,6 +24,7 @@ if (user) {
     return logRows
       .filter(
         (item) =>
+          (item.entry_type || "refuel") === "refuel" &&
           (selected === "all" || item.vehicle_id === selected) &&
           item.created_at.slice(0, 10) >= start &&
           item.created_at.slice(0, 10) <= end,
@@ -51,7 +52,7 @@ if (user) {
         0,
       );
     document.querySelector("#report-output").innerHTML =
-      `<div class="total-strip"><div class="total-box"><label>Total fuel</label><strong>${totalLiters.toFixed(1)} L</strong></div><div class="total-box"><label>Total spend</label><strong>${money(totalCost)}</strong></div><div class="total-box"><label>Distance covered</label><strong>${totalDistance.toLocaleString()} km</strong></div></div>${filtered.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Date</th><th>Vehicle</th><th>Fuel type</th><th>Location</th><th>Odometer</th><th>Fuel</th><th>Cost</th></tr></thead><tbody>${filtered.map((item) => `<tr><td class="mono">${dateText(item.created_at)}</td><td><strong>${vehicle(vehicleRows, item.vehicle_id)?.number_plate || "—"}</strong></td><td>${item.fuel_type || "Petrol"}</td><td>${item.fuel_location || "Not specified"}</td><td class="mono">${Number(item.current_mileage).toLocaleString()} km</td><td class="mono">${Number(item.fuel_amount_liters).toFixed(1)} L</td><td class="mono">${money(item.total_cost)}</td></tr>`).join("")}</tbody></table></div>` : '<div class="empty">No entries match this date range.</div>'}`;
+      `<div class="total-strip"><div class="total-box"><label>Total fuel</label><strong>${totalLiters.toFixed(1)} L</strong></div><div class="total-box"><label>Total spend</label><strong>${money(totalCost)}</strong></div><div class="total-box"><label>Distance covered</label><strong>${totalDistance.toLocaleString()} km</strong></div></div>${filtered.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>Date</th><th>Vehicle</th><th>Fuel type</th><th>Location</th><th>Odometer</th><th>Distance from last fill</th><th>Fuel</th><th>Cost</th></tr></thead><tbody>${filtered.map((item) => { const distanceFromLastFill = item.entry_type === "trip" ? null : Math.max(0, Number(item.current_mileage) - Number(item.mileage_last_fill || item.current_mileage)); return `<tr><td class="mono">${dateText(item.created_at)}</td><td><strong>${vehicle(vehicleRows, item.vehicle_id)?.number_plate || "—"}</strong></td><td>${item.entry_type === "trip" ? "Trip" : item.fuel_type || "Petrol"}</td><td>${item.entry_type === "trip" ? `${item.trip_origin || "Trip"} → ${item.trip_destination || "Destination"}` : item.fuel_location || "Not specified"}</td><td class="mono">${Number(item.current_mileage).toLocaleString()} km</td><td class="mono">${distanceFromLastFill === null ? "—" : `${distanceFromLastFill.toLocaleString()} km`}</td><td class="mono">${item.entry_type === "trip" ? `${Number(item.trip_distance_km || 0).toLocaleString()} km` : `${Number(item.fuel_amount_liters).toFixed(1)} L`}</td><td class="mono">${item.entry_type === "trip" ? "—" : money(item.total_cost)}</td></tr>`; }).join("")}</tbody></table></div>` : '<div class="empty">No entries match this date range.</div>'}`;
   }
   document.querySelector("#filter-button").addEventListener("click", draw);
   document
@@ -69,6 +70,7 @@ if (user) {
           "Fuel type",
           "Location",
           "Odometer (km)",
+          "Distance from last fill (km)",
           "Fuel (L)",
           "Price per litre (ZAR)",
           "Total cost (ZAR)",
@@ -79,6 +81,13 @@ if (user) {
           item.fuel_type || "Petrol",
           item.fuel_location || "",
           item.current_mileage,
+          item.entry_type === "trip"
+            ? ""
+            : Math.max(
+                0,
+                Number(item.current_mileage) -
+                  Number(item.mileage_last_fill || item.current_mileage),
+              ),
           item.fuel_amount_liters,
           item.fuel_price,
           item.total_cost,

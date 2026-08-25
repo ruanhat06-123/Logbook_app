@@ -1,84 +1,41 @@
 import "./app.js";
+import { notifyServiceDue, requestServiceNotifications, serviceReminderKey, serviceReminderMarkup } from "./serviceReminder.js";
+
 const user = await requireAuth();
 if (user) {
-  const { data: currentVehicles } = await supabase
-    .from("vehicles")
-    .select("*")
-    .order("number_plate");
+  const { data } = await supabase.from("vehicles").select("*").order("number_plate");
+  const vehicleList = data || [];
   await shell(
     "logbook",
-    `<header class="topbar"><div><div class="eyebrow">Logbook / new entry</div><h1>Record a fill-up.</h1></div><div class="top-date"><strong>FIELD NOTE</strong>Keep it moving</div></header><div class="card" style="max-width:760px"><div class="notice">Enter the details of your fill-up. You can update your records later.</div><form id="log-form" class="form-grid"><div class="field full"><label for="vehicle">Vehicle</label><select id="vehicle" required>${(currentVehicles || []).map((item) => `<option value="${item.id}">${item.number_plate} · ${item.make || "Not specified"} ${item.model || ""}</option>`).join("")}</select></div><div class="field"><label for="previous">Mileage at last fill (km)</label><input id="previous" type="number" step="1" placeholder="Enter previous mileage"></div><div class="field"><label for="current">Current mileage (km)</label><input id="current" type="number" step="1" placeholder="Enter current mileage" required></div><div class="field"><label for="liters">Fuel amount (litres)</label><input id="liters" type="number" step="0.1" placeholder="Enter fuel amount" required></div><div class="field"><label for="price">Price per litre (ZAR)</label><input id="price" type="number" step="0.01" placeholder="Enter price per litre" required></div><div class="field"><label for="location">Fuel location</label><input id="location" placeholder="Enter station or town"></div><div class="field"><label for="date">Date</label><input id="date" type="date" required></div><div class="form-actions field full"><a href="vehicles.html" class="btn btn-secondary">Cancel</a><button class="btn btn-primary" type="submit">Save fill-up →</button></div></form><div id="success" class="notice" hidden></div></div>`,
+    `<header class="topbar"><div><div class="eyebrow">Logbook / new fill-up</div><h1>Record a fill-up.</h1></div><div class="top-date"><strong>FUEL ENTRY</strong>Keep it moving</div></header>${vehicleList.map(serviceReminderMarkup).join("")}<div class="card" style="max-width:760px"><div class="notice">Enter the details of your fuel stop.</div><form id="log-form" class="form-grid"><div class="field full"><label for="vehicle">Vehicle</label><select id="vehicle" required>${vehicleList.map((item) => `<option value="${item.id}">${item.number_plate} · ${item.make || "Not specified"} ${item.model || ""}</option>`).join("")}</select></div><div class="field"><label for="previous">Mileage at last fill (km)</label><input id="previous" type="number" step="1"></div><div class="field"><label for="current">Current mileage (km)</label><input id="current" type="number" step="1" required></div><div class="field"><label for="liters">Fuel amount (litres)</label><input id="liters" type="number" step="0.1" required></div><div class="field"><label for="price">Price per litre (ZAR)</label><input id="price" type="number" step="0.01" required></div><div class="field"><label for="fuel-type">Fuel type</label><select id="fuel-type"><option>Petrol 93</option><option>Petrol 95</option><option>Diesel PPM500</option><option>Diesel PPM50</option><option>Diesel PPM10</option></select></div><div class="field"><label for="location">Fuel location</label><input id="location"></div><div class="field"><label for="date">Date</label><input id="date" type="date" required></div><div class="form-actions field full"><a href="vehicles.html" class="btn btn-secondary">Cancel</a><button class="btn btn-primary" type="submit">Save fill-up →</button></div></form><div id="success" class="notice" hidden></div></div>`,
   );
-  const priceField = document.querySelector("#price").closest(".field");
-  const fuelTypeField = document.createElement("div");
-  fuelTypeField.className = "field";
-  fuelTypeField.innerHTML =
-    '<label for="fuel-type">Fuel type</label><select id="fuel-type" required><option value="Petrol 93">Petrol 93</option><option value="Petrol 95">Petrol 95</option><option value="Diesel PPM500">Diesel PPM500</option><option value="Diesel PPM50">Diesel PPM50</option><option value="Diesel PPM10">Diesel PPM10</option></select>';
-  priceField.after(fuelTypeField);
-  const totalField = document.createElement("div");
-  totalField.className = "field";
-  totalField.innerHTML =
-    '<label for="total-cost">Total fuel cost (ZAR)</label><input id="total-cost" type="number" readonly placeholder="Calculated automatically">';
-  fuelTypeField.after(totalField);
+  await requestServiceNotifications();
+  vehicleList.forEach(notifyServiceDue);
+  const vehicleSelect = document.querySelector("#vehicle");
+  const updateReminder = () => document.querySelectorAll("[data-service-reminder]").forEach((item) => { item.hidden = item.dataset.serviceReminder !== vehicleSelect.value; });
   document.querySelector("#date").value = new Date().toISOString().slice(0, 10);
-  const selectedVehicle = document.querySelector("#vehicle");
-  const mileageInput = document.querySelector("#previous");
-  const updateLastMileage = () => {
-    const item = (currentVehicles || []).find(
-      (vehicleItem) => vehicleItem.id === selectedVehicle.value,
-    );
-    mileageInput.value = item?.current_mileage ?? "";
-  };
-  selectedVehicle.addEventListener("change", updateLastMileage);
-  updateLastMileage();
-  const updateTotal = () => {
-    const total =
-      Number(document.querySelector("#liters").value || 0) *
-      Number(document.querySelector("#price").value || 0);
-    document.querySelector("#total-cost").value = total ? total.toFixed(2) : "";
-  };
-  document.querySelector("#liters").addEventListener("input", updateTotal);
-  document.querySelector("#price").addEventListener("input", updateTotal);
-  document
-    .querySelector("#log-form")
-    .addEventListener("submit", async (event) => {
-      event.preventDefault();
-      const liters = Number(document.querySelector("#liters").value),
-        price = Number(document.querySelector("#price").value),
-        currentMileage = Number(document.querySelector("#current").value),
-        vehicleId = document.querySelector("#vehicle").value,
-        totalCost = liters * price,
-        { error } = await supabase
-          .from("car_logbook")
-          .insert({
-            vehicle_id: vehicleId,
-            mileage_last_fill: Number(
-              document.querySelector("#previous").value || 0,
-            ),
-            current_mileage: currentMileage,
-            fuel_type: document.querySelector("#fuel-type").value,
-            fuel_price: price,
-            fuel_amount_liters: liters,
-            fuel_location:
-              document.querySelector("#location").value.trim() ||
-              "Not specified",
-            total_cost: totalCost,
-            created_at: `${document.querySelector("#date").value}T12:00:00`,
-          });
-      if (error) return window.alert(error.message);
-      const { error: vehicleError } = await supabase
-        .from("vehicles")
-        .update({ current_mileage: currentMileage })
-        .eq("id", vehicleId);
-      if (vehicleError) return window.alert(vehicleError.message);
-      document.querySelector("#success").hidden = false;
-      document.querySelector("#success").textContent =
-        "Fill-up saved to your cloud logbook.";
-      event.target.reset();
-      document.querySelector("#date").value = new Date()
-        .toISOString()
-        .slice(0, 10);
-      updateLastMileage();
-      updateTotal();
-    });
+  vehicleSelect.addEventListener("change", updateReminder);
+  updateReminder();
+  document.querySelectorAll("[data-confirm-service]").forEach((button) => button.addEventListener("click", async () => {
+    const item = vehicleList.find((entry) => entry.id === button.dataset.confirmService);
+    const { error } = await supabase.from("vehicles").update({ service_reminder_confirmed_for: serviceReminderKey(item) }).eq("id", item.id);
+    if (error) return window.alert(error.message);
+    window.location.reload();
+  }));
+  document.querySelector("#log-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const liters = Number(document.querySelector("#liters").value);
+    const price = Number(document.querySelector("#price").value);
+    const currentMileage = Number(document.querySelector("#current").value);
+    const vehicleId = vehicleSelect.value;
+    const { error } = await supabase.from("car_logbook").insert({ vehicle_id: vehicleId, entry_type: "refuel", mileage_last_fill: Number(document.querySelector("#previous").value || 0), current_mileage: currentMileage, fuel_type: document.querySelector("#fuel-type").value, fuel_price: price, fuel_amount_liters: liters, fuel_location: document.querySelector("#location").value.trim() || "Not specified", total_cost: liters * price, created_at: `${document.querySelector("#date").value}T12:00:00` });
+    if (error) return window.alert(error.message);
+    const { error: vehicleError } = await supabase.from("vehicles").update({ current_mileage: currentMileage }).eq("id", vehicleId);
+    if (vehicleError) return window.alert(vehicleError.message);
+    document.querySelector("#success").hidden = false;
+    document.querySelector("#success").textContent = "Fill-up saved to your cloud logbook.";
+    event.target.reset();
+    document.querySelector("#date").value = new Date().toISOString().slice(0, 10);
+    updateReminder();
+  });
 }
