@@ -1,8 +1,107 @@
-import { supabase } from './supabaseClient.js';
-document.documentElement.dataset.theme = localStorage.getItem('theme') || 'light';
-const form = document.querySelector('#auth-form'); let signup = false;
-const title = document.querySelector('#form-title'), description = document.querySelector('#form-description'), button = document.querySelector('#submit-button'), switchCopy = document.querySelector('#switch-copy'), switchMode = document.querySelector('#switch-mode'), notice = document.querySelector('#auth-notice'), password = document.querySelector('#password'), passwordToggle = document.querySelector('#password-toggle'), nameFields = document.querySelector('#name-fields'), firstName = document.querySelector('#first-name'), surname = document.querySelector('#surname');
-const themeToggle = document.createElement('button'); themeToggle.type = 'button'; themeToggle.className = 'theme-toggle auth-theme-toggle'; themeToggle.textContent = document.documentElement.dataset.theme === 'dark' ? '☼ Light mode' : '☾ Dark mode'; document.querySelector('.auth-box').prepend(themeToggle); themeToggle.addEventListener('click', () => { const theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'; document.documentElement.dataset.theme = theme; localStorage.setItem('theme', theme); themeToggle.textContent = theme === 'dark' ? '☼ Light mode' : '☾ Dark mode'; });
-passwordToggle.addEventListener('click', () => { const visible = password.type === 'text'; password.type = visible ? 'password' : 'text'; passwordToggle.textContent = visible ? 'Show' : 'Hide'; passwordToggle.setAttribute('aria-label', visible ? 'Show password' : 'Hide password'); });
-switchMode.addEventListener('click', () => { signup = !signup; nameFields.hidden = !signup; firstName.required = signup; surname.required = signup; password.autocomplete = signup ? 'new-password' : 'current-password'; title.textContent = signup ? 'Create your logbook' : 'Sign in to your logbook'; description.textContent = signup ? 'Start tracking the details that matter.' : 'Your driving data, ready when you are.'; button.textContent = signup ? 'Create account →' : 'Sign in →'; switchCopy.textContent = signup ? 'Already have an account?' : 'New here?'; switchMode.textContent = signup ? 'Sign in instead' : 'Create an account'; });
-form.addEventListener('submit', async event => { event.preventDefault(); button.disabled = true; const email = document.querySelector('#email').value.trim(), passwordValue = password.value; const result = signup ? await supabase.auth.signUp({ email, password: passwordValue, options: { data: { first_name: firstName.value.trim(), surname: surname.value.trim(), full_name: `${firstName.value.trim()} ${surname.value.trim()}` } } }) : await supabase.auth.signInWithPassword({ email, password: passwordValue }); if (result.error) { notice.hidden = false; notice.textContent = result.error.message; button.disabled = false; return; } notice.hidden = false; notice.textContent = signup && !result.data.session ? 'Account created. Check your email to confirm your account.' : 'Welcome back. Opening your logbook...'; if (result.data.session) setTimeout(() => window.location.href = 'vehicles.html', 350); });
+import { supabase } from "./supabaseClient.js";
+document.documentElement.dataset.theme =
+  localStorage.getItem("theme") || "light";
+const form = document.querySelector("#auth-form");
+let signup = false;
+const title = document.querySelector("#form-title"),
+  description = document.querySelector("#form-description"),
+  button = document.querySelector("#submit-button"),
+  switchCopy = document.querySelector("#switch-copy"),
+  switchMode = document.querySelector("#switch-mode"),
+  notice = document.querySelector("#auth-notice"),
+  password = document.querySelector("#password"),
+  passwordHelp = document.querySelector("#password-help"),
+  passwordToggle = document.querySelector("#password-toggle"),
+  nameFields = document.querySelector("#name-fields"),
+  firstName = document.querySelector("#first-name"),
+  surname = document.querySelector("#surname");
+const validSignupPassword = (value) =>
+  value.length >= 8 &&
+  /[A-Z]/.test(value) &&
+  /[a-z]/.test(value) &&
+  /[0-9]/.test(value);
+const themeToggle = document.createElement("button");
+themeToggle.type = "button";
+themeToggle.className = "theme-toggle auth-theme-toggle";
+themeToggle.textContent =
+  document.documentElement.dataset.theme === "dark"
+    ? "☼ Light mode"
+    : "☾ Dark mode";
+document.querySelector(".auth-box").prepend(themeToggle);
+themeToggle.addEventListener("click", () => {
+  const theme =
+    document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+  document.documentElement.dataset.theme = theme;
+  localStorage.setItem("theme", theme);
+  themeToggle.textContent = theme === "dark" ? "☼ Light mode" : "☾ Dark mode";
+});
+passwordToggle.addEventListener("click", () => {
+  const visible = password.type === "text";
+  password.type = visible ? "password" : "text";
+  passwordToggle.textContent = visible ? "Show" : "Hide";
+  passwordToggle.setAttribute(
+    "aria-label",
+    visible ? "Show password" : "Hide password",
+  );
+});
+switchMode.addEventListener("click", () => {
+  signup = !signup;
+  nameFields.hidden = !signup;
+  firstName.required = signup;
+  surname.required = signup;
+  password.autocomplete = signup ? "new-password" : "current-password";
+  passwordHelp.hidden = !signup;
+  password.minLength = signup ? 8 : 1;
+  title.textContent = signup
+    ? "Create your logbook"
+    : "Sign in to your logbook";
+  description.textContent = signup
+    ? "Create your account to start tracking your vehicles and fill-ups."
+    : "Enter your account details to continue.";
+  button.textContent = signup ? "Create account →" : "Sign in →";
+  switchCopy.textContent = signup ? "Already have an account?" : "New here?";
+  switchMode.textContent = signup ? "Sign in instead" : "Create an account";
+});
+form.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  button.disabled = true;
+  const email = document.querySelector("#email").value.trim(),
+    passwordValue = password.value;
+  if (signup && !validSignupPassword(passwordValue)) {
+    notice.hidden = false;
+    notice.textContent =
+      "Password must be at least 8 characters and include an uppercase letter, a lowercase letter, and a number.";
+    password.focus();
+    button.disabled = false;
+    return;
+  }
+  const result = signup
+    ? await supabase.auth.signUp({
+        email,
+        password: passwordValue,
+        options: {
+          data: {
+            first_name: firstName.value.trim(),
+            surname: surname.value.trim(),
+            full_name: `${firstName.value.trim()} ${surname.value.trim()}`,
+          },
+        },
+      })
+    : await supabase.auth.signInWithPassword({
+        email,
+        password: passwordValue,
+      });
+  if (result.error) {
+    notice.hidden = false;
+    notice.textContent = result.error.message;
+    button.disabled = false;
+    return;
+  }
+  notice.hidden = false;
+  notice.textContent =
+    signup && !result.data.session
+      ? "Account created. Check your email to confirm your account."
+      : "Welcome back. Opening your logbook...";
+  if (result.data.session)
+    setTimeout(() => (window.location.href = "vehicles.html"), 350);
+});
