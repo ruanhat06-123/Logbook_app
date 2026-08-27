@@ -26,59 +26,49 @@ try {
   const formatInputDate = (date) => date.toISOString().slice(0, 10);
 
   // Print-focused CSS (A4 landscape)
-  const printStyles = `
-    <style>
-      .table { width: 100%; border-collapse: collapse; table-layout: fixed; font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; }
-      .table th, .table td { padding: 6px 8px; border-bottom: 1px solid #eee; vertical-align: top; font-size: 12px; }
-      .table th { font-weight: 600; text-align: left; }
-      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, "Roboto Mono", "Courier New", monospace; }
+ const printStyles = `
+  <style>
+    .table { 
+      min-width: 900px; /* force a minimum width so columns don’t squash */
+      border-collapse: collapse; 
+      table-layout: auto; /* let columns size naturally */
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; 
+    }
+    .table th, .table td { 
+      padding: 6px 8px; 
+      border-bottom: 1px solid #eee; 
+      vertical-align: top; 
+      font-size: 12px; 
+    }
+    .table th { font-weight: 600; text-align: left; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, "Roboto Mono", "Courier New", monospace; }
 
-      /* Column width hints (adjusted for single consumption column) */
-      .table th:nth-child(1), .table td:nth-child(1) { width: 9%; }   /* Date */
-      .table th:nth-child(2), .table td:nth-child(2) { width: 11%; }  /* Vehicle */
-      .table th:nth-child(3), .table td:nth-child(3) { width: 9%; }   /* Fuel type */
-      .table th:nth-child(4), .table td:nth-child(4) { width: 20%; }  /* Location / Trip */
-      .table th:nth-child(5), .table td:nth-child(5) { width: 9%; }   /* Odometer */
-      .table th:nth-child(6), .table td:nth-child(6) { width: 8%; }   /* Trip */
-      .table th:nth-child(7), .table td:nth-child(7) { width: 7%; }   /* Fuel */
-      .table th:nth-child(8), .table td:nth-child(8) { width: 8%; }   /* ZAR/L */
-      .table th:nth-child(9), .table td:nth-child(9) { width: 8%; }   /* Total */
-      .table th:nth-child(10), .table td:nth-child(10) { width: 11%; } /* Consumption */
+    @media screen {
+      .table th, .table td { font-size: 13px; padding: 8px 10px; }
+      .report-controls { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+      .table-wrap { overflow-x: auto; } /* horizontal scroll */
+    }
 
-      @media screen {
-        .table th, .table td { font-size: 13px; padding: 8px 10px; }
-        .report-controls { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
-      }
+    @page { size: A4 landscape; margin: 8mm; }
+    @media print {
+      body { -webkit-print-color-adjust: exact; color-adjust: exact; }
+      .report-controls, .btn { display: none !important; }
+      .card { box-shadow: none; border: none; padding: 0; }
+      #report-output { margin: 0; }
 
-      @page { size: A4 landscape; margin: 8mm; }
-      @media print {
-        body { -webkit-print-color-adjust: exact; color-adjust: exact; }
-        .report-controls, .btn { display: none !important; }
-        .card { box-shadow: none; border: none; padding: 0; }
-        #report-output { margin: 0; }
+      .table th, .table td { font-size: 9.5px !important; padding: 4px 6px !important; }
+      .total-strip .total-box label { font-size: 9px; }
+      .total-strip .total-box strong { font-size: 11px; }
 
-        .table th, .table td { font-size: 9.5px !important; padding: 4px 6px !important; }
-        .total-strip .total-box label { font-size: 9px; }
-        .total-strip .total-box strong { font-size: 11px; }
+      table, thead, tbody, tr, td, th { page-break-inside: avoid !important; }
+      .table-wrap { width: 100%; overflow: visible; }
+    }
 
-        /* Keep numeric columns on one line */
-        .table td:nth-child(1), .table td:nth-child(5), .table td:nth-child(6), .table td:nth-child(7), .table td:nth-child(8), .table td:nth-child(9), .table td:nth-child(10) {
-          white-space: nowrap;
-          overflow: visible;
-        }
-
-        /* Allow wrapping for long text columns */
-        .table td:nth-child(4), .table th:nth-child(4) { white-space: normal; word-break: break-word; overflow-wrap: anywhere; }
-
-        table, thead, tbody, tr, td, th { page-break-inside: avoid !important; }
-        .table-wrap { width: 100%; overflow: visible; }
-      }
-
-      @media (max-width: 800px) {
-        .table-wrap { overflow-x: auto; }
-      }
-    </style>
-  `;
+    @media (max-width: 800px) {
+      .table-wrap { overflow-x: auto; } /* scroll on small screens */
+    }
+  </style>
+`;
 
   await shell(
     "report",
