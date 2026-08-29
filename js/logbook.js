@@ -6,11 +6,35 @@ const user = await requireAuth();
 if (!user) throw new Error("Not authenticated");
 
 if (user) {
-  // Fetch vehicles only (no report UI here)
+  // Fetch vehicles list
   const { data: vehiclesData, error: vErr } = await supabase.from("vehicles").select("*").order("number_plate");
   if (vErr) console.error("vehicles fetch error:", vErr);
 
-  const vehicleList = vehiclesData || [];
+  const vehicleRows = vehiclesData || [];
+
+  // For each vehicle, fetch the latest car_logbook entry (refuel) to get the most recent current_mileage
+  async function attachLatestMileage(rows) {
+    return await Promise.all(
+      rows.map(async (row) => {
+        try {
+          const { data: lastFill } = await supabase
+            .from("car_logbook")
+            .select("current_mileage, created_at")
+            .eq("vehicle_id", row.id)
+            .eq("entry_type", "refuel")
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .single();
+          return { ...row, latest_logbook_mileage: Number.isFinite(Number(lastFill?.current_mileage)) ? Number(lastFill.current_mileage) : null };
+        } catch (err) {
+          // If no logbook entry or error, fallback to null
+          return { ...row, latest_logbook_mileage: null };
+        }
+      })
+    );
+  }
+
+  const vehicleList = await attachLatestMileage(vehicleRows);
 
   await shell(
     "logbook",
@@ -23,7 +47,14 @@ if (user) {
           <label for="vehicle">Vehicle</label>
           <select id="vehicle" required>
             <option value="">Select a vehicle</option>
-            ${vehicleList.map((item) => `<option value="${item.id}" data-current-mileage="${Number.isFinite(Number(item.current_mileage)) ? Number(item.current_mileage) : ""}">${escapeHtml(item.number_plate || "")} · ${escapeHtml(item.make || "")} ${escapeHtml(item.model || "")}</option>`).join("")}
+            ${vehicleList
+              .map(
+                (item) =>
+                  `<option value="${item.id}" data-current-mileage="${item.latest_logbook_mileage ?? ""}">${escapeHtml(
+                    item.number_plate || ""
+                  )} · ${escapeHtml(item.make || "")} ${escapeHtml(item.model || "")}</option>`
+              )
+              .join("")}
           </select>
         </div>
 
@@ -38,7 +69,20 @@ if (user) {
         </div>
 
         <div class="field"><label for="fuel-type">Fuel type</label><select id="fuel-type"><option>Petrol 93</option><option>Petrol 95</option><option>Diesel PPM500</option><option>Diesel PPM50</option><option>Diesel PPM10</option></select></div>
-        <div class="field"><label for="location">Fuel location</label><input id="location"></div>
+
+        <div class="field" style="display:flex;gap:8px;align-items:flex-end;">
+          <div style="flex:1">
+            <label for="location">Fuel location</label>
+            <input id="location" placeholder="City, station or coordinates">
+          </div>
+          <div style="width:140px">
+            <label>&nbsp;</label>
+            <button id="detect-location" type="button" class="btn btn-secondary" style="width:100%">Detect location</button>
+          </div>
+        </div>
+
+        <div id="location-status" class="notice" hidden></div>
+
         <div class="field"><label for="date">Date</label><input id="date" type="date" required></div>
 
         <hr style="grid-column: 1 / -1; border: none; height: 1px; background:#eee; margin:8px 0;">
@@ -70,6 +114,9 @@ if (user) {
   const successEl = document.querySelector("#success");
   const consumptionManualInput = document.querySelector("#consumption-manual");
   const efficiencyManualInput = document.querySelector("#efficiency-manual");
+  const locationInput = document.querySelector("#location");
+  const detectBtn = document.querySelector("#detect-location");
+  const locationStatus = document.querySelector("#location-status");
 
   // Helpers
   const formatMoney = (value) =>
@@ -89,15 +136,19 @@ if (user) {
   litersInput.addEventListener("input", updateCalculatedTotal);
   priceInput.addEventListener("input", updateCalculatedTotal);
 
-  // Populate previous mileage from last refuel or vehicle row
+  // Populate previous mileage from last refuel in car_logbook (or from option dataset if present)
   async function fetchLastFillMileage(vehicleId) {
     previousInput.value = "";
     if (!vehicleId) return;
+
+    // First try to read dataset value from the option (prefetched)
     const option = vehicleSelect.querySelector(`option[value="${vehicleId}"]`);
     if (option && option.dataset.currentMileage) {
       previousInput.value = option.dataset.currentMileage;
       return;
     }
+
+    // Fallback: query car_logbook for the latest refuel entry
     try {
       const { data: lastFill } = await supabase
         .from("car_logbook")
@@ -109,12 +160,6 @@ if (user) {
         .single();
       if (lastFill && Number.isFinite(Number(lastFill.current_mileage))) {
         previousInput.value = Number(lastFill.current_mileage);
-        return;
-      }
-      const { data: vehicleRow } = await supabase.from("vehicles").select("current_mileage").eq("id", vehicleId).single();
-      if (vehicleRow && Number.isFinite(Number(vehicleRow.current_mileage))) {
-        previousInput.value = Number(vehicleRow.current_mileage);
-        return;
       }
     } catch (err) {
       console.error("Error fetching last fill mileage:", err);
@@ -151,7 +196,7 @@ if (user) {
     return { lPer100, kmPerL: Number(kmPerL.toFixed(3)) };
   };
 
-  // When user types a manual consumption, derive the other field
+  // Manual input syncing
   consumptionManualInput?.addEventListener("input", () => {
     const val = parseFloat(consumptionManualInput.value);
     if (Number.isFinite(val) && val > 0) {
@@ -172,6 +217,80 @@ if (user) {
     }
   });
 
+  // Geolocation + reverse geocoding helpers
+  async function reverseGeocode(lat, lon) {
+    try {
+      const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&addressdetails=1`;
+      const resp = await fetch(url, { headers: { Accept: "application/json" } });
+      if (!resp.ok) throw new Error("Reverse geocode failed");
+      const data = await resp.json();
+      if (data && data.display_name) return data.display_name;
+      if (data && data.address) {
+        const parts = [];
+        if (data.address.road) parts.push(data.address.road);
+        if (data.address.suburb) parts.push(data.address.suburb);
+        if (data.address.city) parts.push(data.address.city);
+        if (data.address.state) parts.push(data.address.state);
+        if (data.address.country) parts.push(data.address.country);
+        if (parts.length) return parts.join(", ");
+      }
+      return `${lat.toFixed(6)},${lon.toFixed(6)}`;
+    } catch (err) {
+      console.warn("Reverse geocode error:", err);
+      return `${lat.toFixed(6)},${lon.toFixed(6)}`;
+    }
+  }
+
+  function showLocationStatus(message, isError = false) {
+    if (!locationStatus) return;
+    locationStatus.hidden = false;
+    locationStatus.textContent = message;
+    locationStatus.style.color = isError ? "#a00" : "#333";
+    setTimeout(() => { if (locationStatus) locationStatus.hidden = true; }, 6000);
+  }
+
+  async function detectLocationAndFill() {
+    if (!navigator.geolocation) {
+      showLocationStatus("Geolocation not supported by this browser", true);
+      return;
+    }
+    detectBtn.disabled = true;
+    showLocationStatus("Detecting location…");
+    navigator.geolocation.getCurrentPosition(async (pos) => {
+      try {
+        const lat = pos.coords.latitude;
+        const lon = pos.coords.longitude;
+        const address = await reverseGeocode(lat, lon);
+        locationInput.value = address;
+        showLocationStatus("Location detected");
+      } catch (err) {
+        console.error("Location detection error:", err);
+        locationInput.value = `${pos.coords.latitude.toFixed(6)},${pos.coords.longitude.toFixed(6)}`;
+        showLocationStatus("Location detected (coordinates only)");
+      } finally {
+        detectBtn.disabled = false;
+      }
+    }, (err) => {
+      console.warn("Geolocation error:", err);
+      detectBtn.disabled = false;
+      if (err.code === 1) {
+        showLocationStatus("Location permission denied", true);
+      } else if (err.code === 2) {
+        showLocationStatus("Position unavailable", true);
+      } else if (err.code === 3) {
+        showLocationStatus("Location request timed out", true);
+      } else {
+        showLocationStatus("Failed to detect location", true);
+      }
+    }, {
+      enableHighAccuracy: true,
+      timeout: 10000,
+      maximumAge: 60 * 1000
+    });
+  }
+
+  detectBtn.addEventListener("click", detectLocationAndFill);
+
   // Submit handler: accept manual consumption or compute when possible
   document.querySelector("#log-form").addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -183,7 +302,7 @@ if (user) {
     const liters = Number.isFinite(litersRaw) ? Number(litersRaw.toFixed(3)) : NaN;
     const pricePerLitre = Number(priceInput.value);
     const fuelType = document.querySelector("#fuel-type").value;
-    const location = document.querySelector("#location").value || null;
+    const location = locationInput.value || null;
     const date = document.querySelector("#date").value;
 
     // Manual consumption inputs (may be empty)
@@ -203,10 +322,6 @@ if (user) {
       : null;
 
     // Determine consumption/efficiency to store:
-    // Priority:
-    // 1) If user provided manualConsumption or manualEfficiency, use those (derive the other).
-    // 2) Else if distanceSinceLastFill available, compute from litres and distance.
-    // 3) Else store nulls.
     let lPer100 = null;
     let kmPerL = null;
 
@@ -227,13 +342,13 @@ if (user) {
     const totalCost = Number((liters * pricePerLitre).toFixed(2));
 
     try {
+      // Insert into car_logbook: use fuel_price (not price_per_litre)
       const { data: insertData, error: insertErr } = await supabase.from("car_logbook").insert({
         vehicle_id: vehicleId,
         entry_type: "refuel",
         mileage_last_fill: mileageLastFill,
         current_mileage: currentMileage,
         fuel_price: pricePerLitre,
-        price_per_litre: pricePerLitre,
         fuel_amount_liters: liters,
         fuel_location: location,
         total_cost: totalCost,
@@ -248,7 +363,7 @@ if (user) {
         return window.alert(insertErr.message || "Failed to save fill-up. Check console for details.");
       }
 
-      // update vehicle current_mileage
+      // update vehicle current_mileage in vehicles table (keep this behavior)
       const { error: updateErr } = await supabase.from("vehicles").update({
         current_mileage: currentMileage,
       }).eq("id", vehicleId).eq("user_id", user.id);
@@ -268,6 +383,9 @@ if (user) {
         consumptionManualInput.value = "";
         efficiencyManualInput.value = "";
         previousInput.value = currentMileage;
+        // update option dataset so next time it prepopulates
+        const opt = vehicleSelect.querySelector(`option[value="${vehicleId}"]`);
+        if (opt) opt.dataset.currentMileage = currentMileage;
         setTimeout(() => { successEl.hidden = true; }, 4000);
       }
     } catch (err) {

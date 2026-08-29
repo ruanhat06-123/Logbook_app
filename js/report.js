@@ -6,32 +6,29 @@ const user = await requireAuth();
 if (!user) throw new Error("Not authenticated");
 
 try {
-  // Fetch vehicles, car_logbook entries and trips
-  const [vehiclesResp, logbookResp, tripsResp] = await Promise.all([
+  // Fetch vehicles and car_logbook entries only
+  const [vehiclesResp, logbookResp] = await Promise.all([
     supabase.from("vehicles").select("*").order("number_plate"),
     supabase.from("car_logbook").select("*").order("created_at", { ascending: false }),
-    supabase.from("trips").select("*").order("created_at", { ascending: false }),
   ]);
 
   if (vehiclesResp.error) console.error("vehicles fetch error:", vehiclesResp.error);
   if (logbookResp.error) console.error("car_logbook fetch error:", logbookResp.error);
-  if (tripsResp.error) console.error("trips fetch error:", tripsResp.error);
 
   const vehicleRows = vehiclesResp.data || [];
   const logRows = logbookResp.data || [];
-  const tripRows = tripsResp.data || [];
 
   const today = new Date();
   const startDate = new Date(today.getFullYear(), 0, 1);
   const formatInputDate = (date) => date.toISOString().slice(0, 10);
 
   // Print-focused CSS (A4 landscape)
- const printStyles = `
+  const printStyles = `
   <style>
     .table { 
-      min-width: 900px; /* force a minimum width so columns don’t squash */
+      min-width: 900px;
       border-collapse: collapse; 
-      table-layout: auto; /* let columns size naturally */
+      table-layout: auto;
       font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; 
     }
     .table th, .table td { 
@@ -46,7 +43,7 @@ try {
     @media screen {
       .table th, .table td { font-size: 13px; padding: 8px 10px; }
       .report-controls { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
-      .table-wrap { overflow-x: auto; } /* horizontal scroll */
+      .table-wrap { overflow-x: auto; }
     }
 
     @page { size: A4 landscape; margin: 8mm; }
@@ -65,7 +62,7 @@ try {
     }
 
     @media (max-width: 800px) {
-      .table-wrap { overflow-x: auto; } /* scroll on small screens */
+      .table-wrap { overflow-x: auto; }
     }
   </style>
 `;
@@ -117,11 +114,11 @@ try {
     }
   };
 
-  const safeVehicle = globalThis.vehicle || ((list, id) => (list || []).find((v) => String(v.id) === String(id)));
-  const safeDateText = globalThis.dateText || ((d) => (d ? new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : ""));
-  const safeEscape = globalThis.escapeHtml || ((v) => String(v || "").replace(/[&<>'"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[c])));
+  const safeVehicle = (list, id) => (list || []).find((v) => String(v.id) === String(id));
+  const safeDateText = (d) => (d ? new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "");
+  const safeEscape = (v) => String(v || "").replace(/[&<>'"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[c]));
 
-  // Accept multiple possible price field names
+  // Accept multiple possible price field names (prefer fuel_price)
   const readPricePerLitre = (row) => {
     if (!row) return null;
     const candidates = [
@@ -138,12 +135,28 @@ try {
     return null;
   };
 
-  // Merge rows: include both car_logbook refuels and trips table rows
+  // Build refuel rows only (exclude trips entirely)
   function mergedRows() {
-    const refuels = (logRows || []).map(r => ({ ...r, _source: "refuel" }));
-    const trips = (tripRows || []).map(t => ({ ...t, _source: "trip" }));
-    return [...refuels, ...trips].filter(Boolean).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    return (logRows || [])
+      .filter((r) => (r.entry_type || "") === "refuel")
+      .map((r) => ({ ...r, _source: "refuel" }))
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
   }
+
+  // Build refuel lookup by vehicle + date for price/litres fallback
+  const refuelMap = {};
+  (logRows || []).forEach((r) => {
+    if ((r.entry_type || "") !== "refuel") return;
+    const key = `${String(r.vehicle_id)}:${toISODate(r.created_at)}`;
+    if (refuelMap[key] === undefined) {
+      const price = r.fuel_price ?? r.price_per_litre ?? r.fuel_price_per_litre ?? r.price_per_liter ?? r.fuel_price_per_liter ?? null;
+      const litres = r.fuel_amount_liters ?? r.liters ?? null;
+      refuelMap[key] = {
+        price: (price !== null && price !== undefined && price !== "") ? Number(price) : null,
+        litres: (litres !== null && litres !== undefined && litres !== "") ? Number(litres) : null,
+      };
+    }
+  });
 
   function filteredRows() {
     const selected = document.querySelector("#vehicle-filter")?.value || "all";
@@ -161,31 +174,6 @@ try {
       });
   }
 
-  // Read litres for trip fallback (trip may carry trip_litres or we can match refuel by date)
-  const readLitresForTrip = (item, refuelMap) => {
-    const directLitres = item.fuel_amount_liters ?? item.liters ?? item.trip_litres ?? null;
-    if (directLitres !== null && directLitres !== undefined && directLitres !== "") return Number(directLitres);
-    const key = `${String(item.vehicle_id)}:${toISODate(item.created_at)}`;
-    if (refuelMap && refuelMap[key] && refuelMap[key].litres !== null) return refuelMap[key].litres;
-    return null;
-  };
-
-  // Build refuel lookup by vehicle + date for fallback (price and litres)
-  const refuelsResp = logbookResp.data || [];
-  const refuelMap = {};
-  (refuelsResp || []).forEach((r) => {
-    if ((r.entry_type || "") !== "refuel") return;
-    const key = `${String(r.vehicle_id)}:${toISODate(r.created_at)}`;
-    if (refuelMap[key] === undefined) {
-      const price = r.fuel_price ?? r.price_per_litre ?? r.fuel_price_per_litre ?? r.price_per_liter ?? r.fuel_price_per_liter ?? null;
-      const litres = r.fuel_amount_liters ?? r.liters ?? null;
-      refuelMap[key] = {
-        price: (price !== null && price !== undefined && price !== "") ? Number(price) : null,
-        litres: (litres !== null && litres !== undefined && litres !== "") ? Number(litres) : null,
-      };
-    }
-  });
-
   function draw() {
     const filtered = filteredRows();
 
@@ -200,15 +188,10 @@ try {
     }, 0);
 
     const totalDistance = filtered.reduce((sum, item) => {
-      if (item._source === "trip") {
-        const d = Number(item.trip_distance_km ?? 0);
-        return sum + (Number.isFinite(d) ? d : 0);
-      } else {
-        const cur = Number(item.current_mileage ?? 0);
-        const last = Number(item.mileage_last_fill ?? cur);
-        const dist = Math.max(0, cur - last);
-        return sum + (Number.isFinite(dist) ? dist : 0);
-      }
+      const cur = Number(item.current_mileage ?? 0);
+      const last = Number(item.mileage_last_fill ?? cur);
+      const dist = Math.max(0, cur - last);
+      return sum + (Number.isFinite(dist) ? dist : 0);
     }, 0);
 
     const rowsHtml = filtered.length
@@ -216,9 +199,9 @@ try {
           <th>Date</th>
           <th>Vehicle</th>
           <th>Fuel type</th>
-          <th>Location / Trip</th>
+          <th>Location</th>
           <th>Odometer</th>
-          <th>Trip</th>
+          <th>Distance From last fill</th>
           <th>Fuel</th>
           <th>ZAR/L</th>
           <th>Total</th>
@@ -226,34 +209,25 @@ try {
         </tr></thead><tbody>
         ${filtered
           .map((item) => {
-            const isTrip = item._source === "trip";
             const dateLabel = safeDateText(item.created_at);
             const vehicleLabel = safeVehicle(vehicleRows, item.vehicle_id)?.number_plate || "—";
-            const fuelType = isTrip ? "Trip" : (item.fuel_type || "Petrol");
-            const location = isTrip
-              ? `${item.trip_origin || "Trip"} → ${item.trip_destination || "Destination"}`
-              : (item.fuel_location || "Not specified");
-            const odometer = Number(item.current_mileage ?? item.mileage_end ?? 0);
-            const tripCol = isTrip ? `${Number(item.trip_distance_km || 0).toLocaleString()} km` : `${Math.max(0, odometer - Number(item.mileage_last_fill ?? odometer)).toLocaleString()} km`;
-            const fuelDisplay = isTrip ? `${Number(item.trip_distance_km || 0).toLocaleString()} km` : `${Number(item.fuel_amount_liters ?? 0).toFixed(3)} L`;
+            const fuelType = item.fuel_type || "Petrol";
+            const location = item.fuel_location || "Not specified";
+            const odometer = Number(item.current_mileage ?? 0);
+            const distance = Math.max(0, odometer - Number(item.mileage_last_fill ?? odometer));
+            const fuelDisplay = `${Number(item.fuel_amount_liters ?? 0).toFixed(3)} L`;
             const priceVal = readPricePerLitre(item);
             const priceLabel = priceVal === null ? "—" : `ZAR ${Number(priceVal).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-            const totalLabel = isTrip ? "—" : money(item.total_cost ?? (priceVal !== null ? (Number(item.fuel_amount_liters ?? 0) * priceVal) : 0));
+            const totalLabel = money(item.total_cost ?? (priceVal !== null ? (Number(item.fuel_amount_liters ?? 0) * priceVal) : 0));
 
             // consumption: prefer stored value on row, else compute if litres available and distance > 0
             const storedConsumption = item.fuel_consumption_l_per_100km ?? null;
             let consumptionVal = storedConsumption;
             if (consumptionVal === null) {
-              let distanceForCalc = 0;
-              if (isTrip) {
-                distanceForCalc = Number(item.trip_distance_km ?? 0);
-              } else {
-                distanceForCalc = Math.max(0, odometer - Number(item.mileage_last_fill ?? odometer));
-              }
-              if (distanceForCalc > 0) {
-                const litres = readLitresForTrip(item, refuelMap);
+              if (distance > 0) {
+                const litres = (item.fuel_amount_liters ?? item.liters ?? null);
                 if (litres !== null && Number.isFinite(litres) && litres > 0) {
-                  consumptionVal = Number(((litres / distanceForCalc) * 100).toFixed(3));
+                  consumptionVal = Number(((litres / distance) * 100).toFixed(3));
                 }
               }
             }
@@ -266,7 +240,7 @@ try {
               <td>${safeEscape(fuelType)}</td>
               <td>${safeEscape(location)}</td>
               <td class="mono">${odometer.toLocaleString()} km</td>
-              <td class="mono">${safeEscape(tripCol)}</td>
+              <td class="mono">${distance.toLocaleString()} km</td>
               <td class="mono">${safeEscape(fuelDisplay)}</td>
               <td class="mono">${safeEscape(priceLabel)}</td>
               <td class="mono">${safeEscape(totalLabel)}</td>
@@ -295,9 +269,9 @@ try {
       "Date",
       "Vehicle",
       "Fuel type",
-      "Location / Trip",
+      "Location",
       "Odometer (km)",
-      "Trip (km)",
+      "Distance from last fill (km)",
       "Fuel (L)",
       "ZAR/L",
       "Total (ZAR)",
@@ -305,26 +279,21 @@ try {
     ];
 
     const rows = filtered.map((item) => {
-      const isTrip = item._source === "trip";
       const date = toISODate(item.created_at);
       const vehicleLabel = safeVehicle(vehicleRows, item.vehicle_id)?.number_plate || "";
-      const fuelType = isTrip ? "Trip" : (item.fuel_type || "");
-      const location = isTrip
-        ? `${item.trip_origin || ""} → ${item.trip_destination || ""}`
-        : (item.fuel_location || "");
-      const odometer = item.current_mileage ?? item.mileage_end ?? "";
-      const tripCsv = isTrip ? (item.trip_distance_km ?? "") : Math.max(0, Number(item.current_mileage ?? 0) - Number(item.mileage_last_fill ?? item.current_mileage ?? 0));
-      const fuelLitres = isTrip ? (item.trip_distance_km ?? "") : (item.fuel_amount_liters ?? "");
+      const fuelType = item.fuel_type || "";
+      const location = item.fuel_location || "";
+      const odometer = item.current_mileage ?? "";
+      const distance = Math.max(0, Number(item.current_mileage ?? 0) - Number(item.mileage_last_fill ?? item.current_mileage ?? 0));
+      const fuelLitres = item.fuel_amount_liters ?? item.liters ?? "";
       const priceVal = readPricePerLitre(item);
       const priceCsv = priceVal === null ? "" : Number(priceVal).toFixed(2);
       const totalCsv = item.total_cost ?? (priceVal !== null && fuelLitres !== "" ? (Number(fuelLitres) * priceVal).toFixed(2) : "");
-      // consumption: prefer stored, else compute if possible
       const storedConsumption = item.fuel_consumption_l_per_100km ?? "";
       let consumptionCsv = storedConsumption;
-      if ((consumptionCsv === "" || consumptionCsv === null) && tripCsv && Number(tripCsv) > 0) {
-        const litres = readLitresForTrip(item, refuelMap);
-        if (litres !== null && Number.isFinite(litres) && litres > 0) {
-          consumptionCsv = Number(((litres / Number(tripCsv)) * 100).toFixed(3));
+      if ((consumptionCsv === "" || consumptionCsv === null) && distance && Number(distance) > 0) {
+        if (fuelLitres !== "" && Number.isFinite(Number(fuelLitres)) && Number(fuelLitres) > 0) {
+          consumptionCsv = Number(((Number(fuelLitres) / Number(distance)) * 100).toFixed(3));
         }
       }
       return [
@@ -333,7 +302,7 @@ try {
         fuelType,
         location,
         odometer,
-        tripCsv,
+        distance,
         fuelLitres,
         priceCsv,
         totalCsv,

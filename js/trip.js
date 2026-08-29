@@ -24,7 +24,7 @@ if (user) {
     `<header class="topbar"><div><div class="eyebrow">Logbook / new trip</div><h1>Record a trip.</h1></div><div class="top-date"><strong>TRIP ENTRY</strong>Odometer-led</div></header>
     ${vehicleList.map(serviceReminderMarkup).join("")}
     <div class="card" style="max-width:760px">
-      <div class="notice">Trip distance is calculated from the start and end odometer readings. Optionally provide fuel used to calculate consumption.</div>
+      <div class="notice">Trip distance is calculated from the start and end odometer readings.</div>
       <form id="trip-form" class="form-grid">
         <div class="field full">
           <label for="vehicle">Vehicle</label>
@@ -62,10 +62,18 @@ if (user) {
           <input id="origin" type="text" maxlength="200" placeholder="Where the trip started" required>
         </div>
 
-        <div class="field">
-          <label for="destination">Destination</label>
-          <input id="destination" type="text" maxlength="200" placeholder="Where the trip ended" required>
+        <div class="field" style="display:flex;gap:8px;align-items:flex-end;">
+          <div style="flex:1">
+            <label for="destination">Destination</label>
+            <input id="destination" type="text" maxlength="200" placeholder="Where the trip ended" required>
+          </div>
+          <div style="width:140px">
+            <label>&nbsp;</label>
+            <button id="detect-destination" type="button" class="btn btn-secondary" style="width:100%">Detect</button>
+          </div>
         </div>
+
+        <div id="destination-status" class="notice" hidden></div>
 
         <div class="field">
           <label for="purpose">Purpose</label>
@@ -79,9 +87,10 @@ if (user) {
           </select>
         </div>
 
-        <div class="field">
-          <label for="trip-litres">Fuel used (litres) — optional</label>
-          <input id="trip-litres" type="number" step="0.001" inputmode="decimal" placeholder="Optional: litres used during this trip">
+        <!-- Visible only when purpose === "other" -->
+        <div class="field" id="purpose-other-field" style="display:none;">
+          <label for="purpose-other">Please describe the purpose</label>
+          <input id="purpose-other" type="text" maxlength="200" placeholder="Describe the purpose" />
         </div>
 
         <div class="form-actions field full">
@@ -103,7 +112,11 @@ if (user) {
   const originInput = document.querySelector("#origin");
   const destinationInput = document.querySelector("#destination");
   const purposeSelect = document.querySelector("#purpose");
-  const tripLitresInput = document.querySelector("#trip-litres");
+  const purposeOtherField = document.querySelector("#purpose-other-field");
+  const purposeOtherInput = document.querySelector("#purpose-other");
+  const successEl = document.querySelector("#success");
+  const detectDestBtn = document.querySelector("#detect-destination");
+  const destStatus = document.querySelector("#destination-status");
 
   dateInput.value = new Date().toISOString().slice(0, 10);
 
@@ -121,6 +134,7 @@ if (user) {
     }
 
     try {
+      // Prefer last entry from car_logbook
       const { data: lastLog } = await supabase
         .from("car_logbook")
         .select("current_mileage, created_at")
@@ -134,6 +148,7 @@ if (user) {
         return;
       }
 
+      // Fallback to vehicles table
       const { data: vehicleRow } = await supabase
         .from("vehicles")
         .select("current_mileage")
@@ -155,39 +170,89 @@ if (user) {
 
   if (vehicleSelect.value) await populateStartOdometer(vehicleSelect.value);
 
-  // Helper: find nearest refuel for a vehicle on the same date (used as fallback for litres)
-  async function findRefuelForTrip(vehicleId, tripDateISO) {
-    try {
-      const { data } = await supabase
-        .from("car_logbook")
-        .select("fuel_amount_liters, fuel_price, price_per_litre, fuel_price_per_litre, created_at")
-        .eq("vehicle_id", vehicleId)
-        .eq("entry_type", "refuel")
-        .order("created_at", { ascending: false })
-        .limit(50);
+  // Show/hide "other" purpose input and manage required state
+  function updatePurposeOtherVisibility() {
+    const isOther = purposeSelect.value === "other";
+    purposeOtherField.style.display = isOther ? "block" : "none";
+    if (!isOther) purposeOtherInput.value = "";
+  }
 
-      if (!data || !data.length) return null;
-      // prefer exact same date, otherwise nearest by time
-      const sameDate = data.find(r => (new Date(r.created_at).toISOString().slice(0,10)) === tripDateISO);
-      if (sameDate) return sameDate;
-      // fallback: nearest by absolute time difference
-      const tripTs = new Date(tripDateISO).getTime();
-      let best = null;
-      let bestDiff = Infinity;
-      data.forEach(r => {
-        const ts = new Date(r.created_at).getTime();
-        const diff = Math.abs(ts - tripTs);
-        if (diff < bestDiff) {
-          bestDiff = diff;
-          best = r;
-        }
-      });
-      return best || null;
+  purposeSelect.addEventListener("change", updatePurposeOtherVisibility);
+  updatePurposeOtherVisibility();
+
+  // Reverse geocode helper (same approach as logbook)
+  async function reverseGeocode(lat, lon) {
+    try {
+      const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&addressdetails=1`;
+      const resp = await fetch(url, { headers: { Accept: "application/json" } });
+      if (!resp.ok) throw new Error("Reverse geocode failed");
+      const data = await resp.json();
+      if (data && data.display_name) return data.display_name;
+      if (data && data.address) {
+        const parts = [];
+        if (data.address.road) parts.push(data.address.road);
+        if (data.address.suburb) parts.push(data.address.suburb);
+        if (data.address.city) parts.push(data.address.city);
+        if (data.address.state) parts.push(data.address.state);
+        if (data.address.country) parts.push(data.address.country);
+        if (parts.length) return parts.join(", ");
+      }
+      return `${lat.toFixed(6)},${lon.toFixed(6)}`;
     } catch (err) {
-      console.error("Error finding refuel for trip:", err);
-      return null;
+      console.warn("Reverse geocode error:", err);
+      return `${lat.toFixed(6)},${lon.toFixed(6)}`;
     }
   }
+
+  function showDestStatus(message, isError = false) {
+    if (!destStatus) return;
+    destStatus.hidden = false;
+    destStatus.textContent = message;
+    destStatus.style.color = isError ? "#a00" : "#333";
+    setTimeout(() => { if (destStatus) destStatus.hidden = true; }, 6000);
+  }
+
+  async function detectDestination() {
+    if (!navigator.geolocation) {
+      showDestStatus("Geolocation not supported by this browser", true);
+      return;
+    }
+    detectDestBtn.disabled = true;
+    showDestStatus("Detecting destination…");
+    navigator.geolocation.getCurrentPosition(async (pos) => {
+      try {
+        const lat = pos.coords.latitude;
+        const lon = pos.coords.longitude;
+        const address = await reverseGeocode(lat, lon);
+        destinationInput.value = address;
+        showDestStatus("Destination detected");
+      } catch (err) {
+        console.error("Destination detection error:", err);
+        destinationInput.value = `${pos.coords.latitude.toFixed(6)},${pos.coords.longitude.toFixed(6)}`;
+        showDestStatus("Destination detected (coordinates only)");
+      } finally {
+        detectDestBtn.disabled = false;
+      }
+    }, (err) => {
+      console.warn("Geolocation error:", err);
+      detectDestBtn.disabled = false;
+      if (err.code === 1) {
+        showDestStatus("Location permission denied", true);
+      } else if (err.code === 2) {
+        showDestStatus("Position unavailable", true);
+      } else if (err.code === 3) {
+        showDestStatus("Location request timed out", true);
+      } else {
+        showDestStatus("Failed to detect destination", true);
+      }
+    }, {
+      enableHighAccuracy: true,
+      timeout: 10000,
+      maximumAge: 60 * 1000
+    });
+  }
+
+  detectDestBtn?.addEventListener("click", detectDestination);
 
   document.querySelector("#trip-form").addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -200,37 +265,19 @@ if (user) {
     const origin = originInput.value.trim();
     const destination = destinationInput.value.trim();
     const purpose = purposeSelect.value;
-    const tripLitresRaw = tripLitresInput.value ? parseFloat(tripLitresInput.value) : null;
-    const tripLitres = Number.isFinite(tripLitresRaw) ? Number(tripLitresRaw.toFixed(3)) : null;
+    const purposeOther = purposeOtherInput.value.trim();
 
     if (!vehicleId) return window.alert("Please select a vehicle.");
     if (!origin) return window.alert("Please enter an origin.");
     if (!destination) return window.alert("Please enter a destination.");
     if (!purpose) return window.alert("Please select a purpose.");
+    if (purpose === "other" && !purposeOther) return window.alert("Please describe the purpose when 'Other' is selected.");
     if (!Number.isFinite(startOdo)) return window.alert("Please enter a valid start odometer.");
     if (!Number.isFinite(endOdo)) return window.alert("Please enter a valid end odometer.");
     if (endOdo < startOdo) return window.alert("End odometer must be greater than or equal to start odometer.");
 
     const tripDistance = endOdo - startOdo;
-
-    // Determine litres to use for consumption calculation:
-    // 1) prefer explicit tripLitres if provided
-    // 2) else try to find a refuel on same vehicle near the trip date and use its litres
-    let litresForCalc = tripLitres;
-    if (litresForCalc === null) {
-      const refuel = await findRefuelForTrip(vehicleId, date);
-      if (refuel && Number.isFinite(Number(refuel.fuel_amount_liters ?? refuel.liters ?? NaN))) {
-        litresForCalc = Number((refuel.fuel_amount_liters ?? refuel.liters));
-      }
-    }
-
-    // compute consumption and efficiency if we have distance and litres
-    let tripConsumptionLPer100 = null;
-    let tripEfficiencyKmPerL = null;
-    if (tripDistance > 0 && litresForCalc !== null && Number.isFinite(litresForCalc) && litresForCalc > 0) {
-      tripConsumptionLPer100 = Number(((litresForCalc / tripDistance) * 100).toFixed(3));
-      tripEfficiencyKmPerL = Number((tripDistance / litresForCalc).toFixed(3));
-    }
+    const tripPurposeToStore = (purpose === "other") ? purposeOther : purpose;
 
     try {
       const { data: tripData, error: insertErr } = await supabase
@@ -244,9 +291,7 @@ if (user) {
           created_at: new Date(date),
           trip_origin: origin,
           trip_destination: destination,
-          trip_purpose: purpose,
-          fuel_consumption_l_per_100km: tripConsumptionLPer100,
-          fuel_efficiency_km_per_l: tripEfficiencyKmPerL,
+          trip_purpose: tripPurposeToStore
         })
         .select()
         .single();
@@ -266,7 +311,6 @@ if (user) {
         console.error("Update vehicle mileage error (trip):", updateErr);
         window.alert("Trip saved but failed to update vehicle mileage. Check console for details.");
       } else {
-        const successEl = document.querySelector("#success");
         successEl.hidden = false;
         successEl.textContent = "Trip saved and vehicle odometer updated.";
         setTimeout(() => window.location.reload(), 700);

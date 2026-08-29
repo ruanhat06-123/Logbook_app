@@ -9,11 +9,6 @@ const reminderThreshold = (vehicleItem) => {
   return REMINDER_THRESHOLD;
 };
 
-export const serviceReminderKey = (vehicleItem) => {
-  const threshold = reminderThreshold(vehicleItem);
-  return threshold ? `${Number(vehicleItem.next_service_mileage)}:${threshold}` : null;
-};
-
 export const isServiceDue = (vehicleItem) => {
   const threshold = reminderThreshold(vehicleItem);
   if (!threshold) return false;
@@ -21,8 +16,7 @@ export const isServiceDue = (vehicleItem) => {
   const current = Number(vehicleItem.current_mileage || 0);
   if (!Number.isFinite(next)) return false;
   const remaining = next - current;
-  const key = serviceReminderKey(vehicleItem);
-  return remaining <= threshold && vehicleItem.service_reminder_confirmed_for !== key;
+  return remaining <= threshold;
 };
 
 export const serviceReminderMarkup = (vehicleItem) => {
@@ -33,7 +27,7 @@ export const serviceReminderMarkup = (vehicleItem) => {
   return `<div class="service-reminder" data-service-reminder="${escapeHtml(vehicleItem.id)}">
     <div>
       <strong>Service reminder for ${escapeHtml(label)}</strong>
-      <span>${remaining.toLocaleString()} km remaining · Reminder started at ${threshold.toLocaleString()} km</span>
+      <span>${remaining.toLocaleString()} km remaining · Reminder threshold ${threshold.toLocaleString()} km</span>
     </div>
     <button class="btn btn-secondary" type="button" data-confirm-service="${escapeHtml(vehicleItem.id)}">Confirm serviced</button>
   </div>`;
@@ -44,7 +38,7 @@ export const notifyServiceDue = (vehicleItem) => {
   if (Notification.permission === "granted") {
     new Notification("Vehicle service due", {
       body: `${vehicleItem.number_plate || "Your vehicle"} has ${Math.max(0, Number(vehicleItem.next_service_mileage) - Number(vehicleItem.current_mileage || 0)).toLocaleString()} km until service.`,
-      tag: `service-${vehicleItem.id}-${serviceReminderKey(vehicleItem)}`,
+      tag: `service-${vehicleItem.id}-${vehicleItem.next_service_mileage}`,
     });
   }
 };
@@ -55,8 +49,8 @@ export const requestServiceNotifications = async () => {
 };
 
 /* Delegated click handler so confirm works for dynamically inserted buttons.
-   This handler prompts for next service mileage and updates the vehicle row.
-   It logs the full Supabase response so failures (RLS, permissions) are visible. */
+   This handler prompts for next service mileage and updates only next_service_mileage.
+   No "confirmed" flag is written to the database. */
 const handleConfirmClick = async (event) => {
   const btn = event.target.closest("[data-confirm-service]");
   if (!btn) return;
@@ -100,14 +94,11 @@ const handleConfirmClick = async (event) => {
       return;
     }
 
-    const key = `${nextService}:${REMINDER_THRESHOLD}`;
-
+    // Update only next_service_mileage (do not write any "confirmed" flag)
     const updateResp = await supabase
       .from("vehicles")
       .update({
-        last_service_mileage: currentOdo,
         next_service_mileage: nextService,
-        service_reminder_confirmed_for: key,
       })
       .eq("id", vehicleId)
       // .eq("user_id", sessionData.session.user.id) // uncomment if your RLS requires ownership
@@ -115,7 +106,7 @@ const handleConfirmClick = async (event) => {
       .single();
 
     console.group("service confirm update response");
-    console.log("request:", { id: vehicleId, last_service_mileage: currentOdo, next_service_mileage: nextService, service_reminder_confirmed_for: key });
+    console.log("request:", { id: vehicleId, next_service_mileage: nextService });
     console.log("response data:", updateResp.data);
     console.log("response error:", updateResp.error);
     console.log("response status:", updateResp.status);
