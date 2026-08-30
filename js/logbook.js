@@ -1,13 +1,20 @@
 // logbook.js
 import "./app.js";
-import { notifyServiceDue, requestServiceNotifications, serviceReminderMarkup } from "./serviceReminder.js";
+import {
+  notifyServiceDue,
+  requestServiceNotifications,
+  serviceReminderMarkup,
+} from "./serviceReminder.js";
 
 const user = await requireAuth();
 if (!user) throw new Error("Not authenticated");
 
 if (user) {
   // Fetch vehicles list
-  const { data: vehiclesData, error: vErr } = await supabase.from("vehicles").select("*").order("number_plate");
+  const { data: vehiclesData, error: vErr } = await supabase
+    .from("vehicles")
+    .select("*")
+    .order("number_plate");
   if (vErr) console.error("vehicles fetch error:", vErr);
 
   const vehicleRows = vehiclesData || [];
@@ -25,12 +32,19 @@ if (user) {
             .order("created_at", { ascending: false })
             .limit(1)
             .single();
-          return { ...row, latest_logbook_mileage: Number.isFinite(Number(lastFill?.current_mileage)) ? Number(lastFill.current_mileage) : null };
+          return {
+            ...row,
+            latest_logbook_mileage: Number.isFinite(
+              Number(lastFill?.current_mileage),
+            )
+              ? Number(lastFill.current_mileage)
+              : null,
+          };
         } catch (err) {
           // If no logbook entry or error, fallback to null
           return { ...row, latest_logbook_mileage: null };
         }
-      })
+      }),
     );
   }
 
@@ -51,8 +65,8 @@ if (user) {
               .map(
                 (item) =>
                   `<option value="${item.id}" data-current-mileage="${item.latest_logbook_mileage ?? ""}">${escapeHtml(
-                    item.number_plate || ""
-                  )} · ${escapeHtml(item.make || "")} ${escapeHtml(item.model || "")}</option>`
+                    item.number_plate || "",
+                  )} · ${escapeHtml(item.make || "")} ${escapeHtml(item.model || "")}</option>`,
               )
               .join("")}
           </select>
@@ -74,6 +88,7 @@ if (user) {
           <div style="flex:1">
             <label for="location">Fuel location</label>
             <input id="location" placeholder="City, station or coordinates">
+            <div id="location-hint" style="font-size:12px;color:#666;margin-top:6px;display:none"></div>
           </div>
           <div style="width:140px">
             <label>&nbsp;</label>
@@ -97,7 +112,7 @@ if (user) {
         </div>
       </form>
       <div id="success" class="notice" hidden></div>
-    </div>`
+    </div>`,
   );
 
   await requestServiceNotifications();
@@ -117,6 +132,7 @@ if (user) {
   const locationInput = document.querySelector("#location");
   const detectBtn = document.querySelector("#detect-location");
   const locationStatus = document.querySelector("#location-status");
+  const locationHint = document.querySelector("#location-hint");
 
   // Helpers
   const formatMoney = (value) =>
@@ -125,7 +141,12 @@ if (user) {
   function updateCalculatedTotal() {
     const liters = parseFloat(litersInput.value);
     const price = parseFloat(priceInput.value);
-    if (!Number.isFinite(liters) || liters <= 0 || !Number.isFinite(price) || price < 0) {
+    if (
+      !Number.isFinite(liters) ||
+      liters <= 0 ||
+      !Number.isFinite(price) ||
+      price < 0
+    ) {
       totalValueEl.textContent = formatMoney(0);
       return;
     }
@@ -177,21 +198,25 @@ if (user) {
 
   // Compute consumption helpers
   const computeFromLitresAndDistance = (litres, distanceKm) => {
-    if (!Number.isFinite(litres) || litres <= 0) return { lPer100: null, kmPerL: null };
-    if (!Number.isFinite(distanceKm) || distanceKm <= 0) return { lPer100: null, kmPerL: null };
+    if (!Number.isFinite(litres) || litres <= 0)
+      return { lPer100: null, kmPerL: null };
+    if (!Number.isFinite(distanceKm) || distanceKm <= 0)
+      return { lPer100: null, kmPerL: null };
     const lPer100 = Number(((litres / distanceKm) * 100).toFixed(3));
     const kmPerL = Number((distanceKm / litres).toFixed(3));
     return { lPer100, kmPerL };
   };
 
   const computeFromConsumption = (lPer100) => {
-    if (!Number.isFinite(lPer100) || lPer100 <= 0) return { lPer100: null, kmPerL: null };
+    if (!Number.isFinite(lPer100) || lPer100 <= 0)
+      return { lPer100: null, kmPerL: null };
     const kmPerL = Number((100 / lPer100).toFixed(3));
     return { lPer100: Number(lPer100.toFixed(3)), kmPerL };
   };
 
   const computeFromEfficiency = (kmPerL) => {
-    if (!Number.isFinite(kmPerL) || kmPerL <= 0) return { lPer100: null, kmPerL: null };
+    if (!Number.isFinite(kmPerL) || kmPerL <= 0)
+      return { lPer100: null, kmPerL: null };
     const lPer100 = Number(((1 / kmPerL) * 100).toFixed(3));
     return { lPer100, kmPerL: Number(kmPerL.toFixed(3)) };
   };
@@ -217,11 +242,41 @@ if (user) {
     }
   });
 
-  // Geolocation + reverse geocoding helpers
+  // -------------------------
+  // Location parsing + reverse geocoding improvements
+  // - Accept typed coordinates (lat, lon or lon, lat)
+  // - Auto-reverse-geocode when coordinates are entered
+  // - Robust geolocation detection with clear status messages
+  // - Keep UI hints for coordinate formats
+  // -------------------------
+
+  // Parse coordinates from a free-text input.
+  // Returns [lon, lat] if parseable, otherwise null.
+  function parseCoordinates(text) {
+    if (!text || typeof text !== "string") return null;
+    const trimmed = text.trim();
+    // Accept formats like "lat, lon" or "lon, lat" or "lat lon" or "lat;lon"
+    const coordMatch = trimmed.match(/^(-?\d+(\.\d+)?)[,\s;]+(-?\d+(\.\d+)?)$/);
+    if (!coordMatch) return null;
+    const a = Number(coordMatch[1]);
+    const b = Number(coordMatch[3]);
+    if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+    // Determine which is lat and which is lon:
+    // If a is in latitude range (-90..90) and b in longitude (-180..180), assume a=lat, b=lon -> return [lon, lat]
+    if (a >= -90 && a <= 90 && b >= -180 && b <= 180) return [b, a];
+    // If b is in latitude range and a in longitude range, assume a=lon, b=lat -> return [a, b]
+    if (b >= -90 && b <= 90 && a >= -180 && a <= 180) return [a, b];
+    // Otherwise ambiguous — return null
+    return null;
+  }
+
+  // Reverse geocode using Nominatim (OpenStreetMap)
   async function reverseGeocode(lat, lon) {
     try {
       const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&addressdetails=1`;
-      const resp = await fetch(url, { headers: { Accept: "application/json" } });
+      const resp = await fetch(url, {
+        headers: { Accept: "application/json" },
+      });
       if (!resp.ok) throw new Error("Reverse geocode failed");
       const data = await resp.json();
       if (data && data.display_name) return data.display_name;
@@ -241,14 +296,70 @@ if (user) {
     }
   }
 
+  // Show status helper
   function showLocationStatus(message, isError = false) {
     if (!locationStatus) return;
     locationStatus.hidden = false;
     locationStatus.textContent = message;
     locationStatus.style.color = isError ? "#a00" : "#333";
-    setTimeout(() => { if (locationStatus) locationStatus.hidden = true; }, 6000);
+    setTimeout(() => {
+      if (locationStatus) locationStatus.hidden = true;
+    }, 6000);
   }
 
+  // When user types into the location input, detect coordinate-like input and auto-reverse-geocode.
+  // Debounce to avoid excessive requests.
+  function debounce(fn, wait = 300) {
+    let t;
+    return (...args) => {
+      clearTimeout(t);
+      t = setTimeout(() => fn(...args), wait);
+    };
+  }
+
+  const handleLocationInput = debounce(async () => {
+    const text = locationInput.value?.trim();
+    if (!text) {
+      if (locationHint) {
+        locationHint.style.display = "none";
+        locationHint.textContent = "";
+      }
+      return;
+    }
+
+    // Show a small hint about accepted coordinate formats
+    if (locationHint) {
+      locationHint.style.display = "block";
+      locationHint.textContent =
+        'Tip: you can paste coordinates like "-26.2041, 28.0473" to auto-fill the address.';
+    }
+
+    // If the user typed coordinates, parse and reverse-geocode them
+    const coords = parseCoordinates(text);
+    if (coords) {
+      const [lon, lat] = coords;
+      showLocationStatus("Resolving coordinates…");
+      try {
+        const address = await reverseGeocode(lat, lon);
+        // Only replace the input if reverse geocode returned a human-readable address
+        if (address) {
+          locationInput.value = address;
+          if (locationHint) {
+            locationHint.style.display = "block";
+            locationHint.textContent = `Detected coordinates: ${lat.toFixed(6)}, ${lon.toFixed(6)}`;
+          }
+          showLocationStatus("Address resolved from coordinates");
+        }
+      } catch (err) {
+        console.warn("Failed to reverse geocode typed coordinates", err);
+        showLocationStatus("Failed to resolve coordinates", true);
+      }
+    }
+  }, 450);
+
+  locationInput.addEventListener("input", handleLocationInput);
+
+  // Geolocation detection: fill location input with reverse-geocoded address or coordinates fallback
   async function detectLocationAndFill() {
     if (!navigator.geolocation) {
       showLocationStatus("Geolocation not supported by this browser", true);
@@ -256,148 +367,227 @@ if (user) {
     }
     detectBtn.disabled = true;
     showLocationStatus("Detecting location…");
-    navigator.geolocation.getCurrentPosition(async (pos) => {
-      try {
-        const lat = pos.coords.latitude;
-        const lon = pos.coords.longitude;
-        const address = await reverseGeocode(lat, lon);
-        locationInput.value = address;
-        showLocationStatus("Location detected");
-      } catch (err) {
-        console.error("Location detection error:", err);
-        locationInput.value = `${pos.coords.latitude.toFixed(6)},${pos.coords.longitude.toFixed(6)}`;
-        showLocationStatus("Location detected (coordinates only)");
-      } finally {
-        detectBtn.disabled = false;
-      }
-    }, (err) => {
-      console.warn("Geolocation error:", err);
+    try {
+      await new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 60 * 1000,
+        });
+      }).then(
+        async (pos) => {
+          try {
+            const lat = pos.coords.latitude;
+            const lon = pos.coords.longitude;
+            showLocationStatus("Reverse geocoding location…");
+            const address = await reverseGeocode(lat, lon);
+            locationInput.value =
+              address || `${lat.toFixed(6)},${lon.toFixed(6)}`;
+            if (locationHint) {
+              locationHint.style.display = "block";
+              locationHint.textContent = `Coordinates: ${lat.toFixed(6)}, ${lon.toFixed(6)}`;
+            }
+            showLocationStatus("Location detected");
+          } catch (err) {
+            console.error("Location detection error:", err);
+            locationInput.value = `${pos.coords.latitude.toFixed(6)},${pos.coords.longitude.toFixed(6)}`;
+            showLocationStatus("Location detected (coordinates only)");
+          } finally {
+            detectBtn.disabled = false;
+          }
+        },
+        (err) => {
+          detectBtn.disabled = false;
+          console.warn("Geolocation error:", err);
+          if (err.code === 1) {
+            showLocationStatus("Location permission denied", true);
+          } else if (err.code === 2) {
+            showLocationStatus("Position unavailable", true);
+          } else if (err.code === 3) {
+            showLocationStatus("Location request timed out", true);
+          } else {
+            showLocationStatus("Failed to detect location", true);
+          }
+        },
+      );
+    } catch (err) {
       detectBtn.disabled = false;
-      if (err.code === 1) {
-        showLocationStatus("Location permission denied", true);
-      } else if (err.code === 2) {
-        showLocationStatus("Position unavailable", true);
-      } else if (err.code === 3) {
-        showLocationStatus("Location request timed out", true);
-      } else {
-        showLocationStatus("Failed to detect location", true);
-      }
-    }, {
-      enableHighAccuracy: true,
-      timeout: 10000,
-      maximumAge: 60 * 1000
-    });
+      console.error("Unexpected geolocation error:", err);
+      showLocationStatus("Failed to detect location", true);
+    }
   }
 
   detectBtn.addEventListener("click", detectLocationAndFill);
 
+  // -------------------------
   // Submit handler: accept manual consumption or compute when possible
-  document.querySelector("#log-form").addEventListener("submit", async (event) => {
-    event.preventDefault();
+  // -------------------------
+  document
+    .querySelector("#log-form")
+    .addEventListener("submit", async (event) => {
+      event.preventDefault();
 
-    const vehicleId = vehicleSelect.value;
-    const mileageLastFill = previousInput.value ? Number(previousInput.value) : null;
-    const currentMileage = Number(currentInput.value);
-    const litersRaw = parseFloat(litersInput.value);
-    const liters = Number.isFinite(litersRaw) ? Number(litersRaw.toFixed(3)) : NaN;
-    const pricePerLitre = Number(priceInput.value);
-    const fuelType = document.querySelector("#fuel-type").value;
-    const location = locationInput.value || null;
-    const date = document.querySelector("#date").value;
+      const vehicleId = vehicleSelect.value;
+      const mileageLastFill = previousInput.value
+        ? Number(previousInput.value)
+        : null;
+      const currentMileage = Number(currentInput.value);
+      const litersRaw = parseFloat(litersInput.value);
+      const liters = Number.isFinite(litersRaw)
+        ? Number(litersRaw.toFixed(3))
+        : NaN;
+      const pricePerLitre = Number(priceInput.value);
+      const fuelType = document.querySelector("#fuel-type").value;
+      const locationRaw = locationInput.value || null;
+      const date = document.querySelector("#date").value;
 
-    // Manual consumption inputs (may be empty)
-    const manualConsumptionRaw = consumptionManualInput.value ? parseFloat(consumptionManualInput.value) : null;
-    const manualEfficiencyRaw = efficiencyManualInput.value ? parseFloat(efficiencyManualInput.value) : null;
-    const manualConsumption = Number.isFinite(manualConsumptionRaw) ? Number(manualConsumptionRaw.toFixed(3)) : null;
-    const manualEfficiency = Number.isFinite(manualEfficiencyRaw) ? Number(manualEfficiencyRaw.toFixed(3)) : null;
+      // Manual consumption inputs (may be empty)
+      const manualConsumptionRaw = consumptionManualInput.value
+        ? parseFloat(consumptionManualInput.value)
+        : null;
+      const manualEfficiencyRaw = efficiencyManualInput.value
+        ? parseFloat(efficiencyManualInput.value)
+        : null;
+      const manualConsumption = Number.isFinite(manualConsumptionRaw)
+        ? Number(manualConsumptionRaw.toFixed(3))
+        : null;
+      const manualEfficiency = Number.isFinite(manualEfficiencyRaw)
+        ? Number(manualEfficiencyRaw.toFixed(3))
+        : null;
 
-    if (!vehicleId) return window.alert("Please select a vehicle.");
-    if (!Number.isFinite(currentMileage)) return window.alert("Please enter a valid current mileage.");
-    if (!Number.isFinite(liters) || liters <= 0) return window.alert("Please enter a valid fuel amount (up to 3 decimal places).");
-    if (!Number.isFinite(pricePerLitre) || pricePerLitre < 0) return window.alert("Please enter a valid price per litre.");
+      if (!vehicleId) return window.alert("Please select a vehicle.");
+      if (!Number.isFinite(currentMileage))
+        return window.alert("Please enter a valid current mileage.");
+      if (!Number.isFinite(liters) || liters <= 0)
+        return window.alert(
+          "Please enter a valid fuel amount (up to 3 decimal places).",
+        );
+      if (!Number.isFinite(pricePerLitre) || pricePerLitre < 0)
+        return window.alert("Please enter a valid price per litre.");
 
-    // distance since last fill (guard against missing last fill)
-    const distanceSinceLastFill = (Number.isFinite(mileageLastFill) && mileageLastFill !== null)
-      ? Math.max(0, currentMileage - Number(mileageLastFill))
-      : null;
+      // distance since last fill (guard against missing last fill)
+      const distanceSinceLastFill =
+        Number.isFinite(mileageLastFill) && mileageLastFill !== null
+          ? Math.max(0, currentMileage - Number(mileageLastFill))
+          : null;
 
-    // Determine consumption/efficiency to store:
-    let lPer100 = null;
-    let kmPerL = null;
+      // Determine consumption/efficiency to store:
+      let lPer100 = null;
+      let kmPerL = null;
 
-    if (manualConsumption !== null) {
-      const derived = computeFromConsumption(manualConsumption);
-      lPer100 = derived.lPer100;
-      kmPerL = derived.kmPerL;
-    } else if (manualEfficiency !== null) {
-      const derived = computeFromEfficiency(manualEfficiency);
-      lPer100 = derived.lPer100;
-      kmPerL = derived.kmPerL;
-    } else if (distanceSinceLastFill !== null && distanceSinceLastFill > 0) {
-      const derived = computeFromLitresAndDistance(liters, distanceSinceLastFill);
-      lPer100 = derived.lPer100;
-      kmPerL = derived.kmPerL;
-    }
-
-    const totalCost = Number((liters * pricePerLitre).toFixed(2));
-
-    try {
-      // Insert into car_logbook: use fuel_price (not price_per_litre)
-      const { data: insertData, error: insertErr } = await supabase.from("car_logbook").insert({
-        vehicle_id: vehicleId,
-        entry_type: "refuel",
-        mileage_last_fill: mileageLastFill,
-        current_mileage: currentMileage,
-        fuel_price: pricePerLitre,
-        fuel_amount_liters: liters,
-        fuel_location: location,
-        total_cost: totalCost,
-        fuel_type: fuelType,
-        fuel_consumption_l_per_100km: lPer100,
-        fuel_efficiency_km_per_l: kmPerL,
-        created_at: new Date(date),
-      }).select().single();
-
-      if (insertErr) {
-        console.error("Insert fuel log error:", insertErr);
-        return window.alert(insertErr.message || "Failed to save fill-up. Check console for details.");
+      if (manualConsumption !== null) {
+        const derived = computeFromConsumption(manualConsumption);
+        lPer100 = derived.lPer100;
+        kmPerL = derived.kmPerL;
+      } else if (manualEfficiency !== null) {
+        const derived = computeFromEfficiency(manualEfficiency);
+        lPer100 = derived.lPer100;
+        kmPerL = derived.kmPerL;
+      } else if (distanceSinceLastFill !== null && distanceSinceLastFill > 0) {
+        const derived = computeFromLitresAndDistance(
+          liters,
+          distanceSinceLastFill,
+        );
+        lPer100 = derived.lPer100;
+        kmPerL = derived.kmPerL;
       }
 
-      // update vehicle current_mileage in vehicles table (keep this behavior)
-      const { error: updateErr } = await supabase.from("vehicles").update({
-        current_mileage: currentMileage,
-      }).eq("id", vehicleId).eq("user_id", user.id);
+      const totalCost = Number((liters * pricePerLitre).toFixed(2));
 
-      if (updateErr) {
-        console.error("Update vehicle mileage error (logbook):", updateErr);
-        window.alert("Fill-up saved but failed to update vehicle mileage. Check console for details.");
-      } else {
-        successEl.hidden = false;
-        const consumptionText = lPer100 === null ? "—" : `${lPer100} L/100km`;
-        const efficiencyText = kmPerL === null ? "—" : `${kmPerL} km/L`;
-        successEl.textContent = `Fill-up saved. Total: ${formatMoney(totalCost)}. Consumption: ${consumptionText} · ${efficiencyText}.`;
-        // reset form fields (keep vehicle selected)
-        litersInput.value = "";
-        priceInput.value = "";
-        currentInput.value = "";
-        consumptionManualInput.value = "";
-        efficiencyManualInput.value = "";
-        previousInput.value = currentMileage;
-        // update option dataset so next time it prepopulates
-        const opt = vehicleSelect.querySelector(`option[value="${vehicleId}"]`);
-        if (opt) opt.dataset.currentMileage = currentMileage;
-        setTimeout(() => { successEl.hidden = true; }, 4000);
+      // Normalize location: if user pasted coordinates but didn't reverse-geocode, try to parse and reverse now
+      let locationToStore = locationRaw;
+      if (locationRaw) {
+        const coords = parseCoordinates(locationRaw);
+        if (coords) {
+          try {
+            const [lon, lat] = coords;
+            const resolved = await reverseGeocode(lat, lon);
+            if (resolved) locationToStore = resolved;
+          } catch (err) {
+            // keep raw input if reverse fails
+            console.warn("Failed to reverse geocode on submit:", err);
+          }
+        }
       }
-    } catch (err) {
-      console.error("Unexpected error saving fill-up:", err);
-      window.alert("An unexpected error occurred. See console for details.");
-    }
-  });
+
+      try {
+        // Insert into car_logbook: use fuel_price (not price_per_litre)
+        const { data: insertData, error: insertErr } = await supabase
+          .from("car_logbook")
+          .insert({
+            vehicle_id: vehicleId,
+            entry_type: "refuel",
+            mileage_last_fill: mileageLastFill,
+            current_mileage: currentMileage,
+            fuel_price: pricePerLitre,
+            fuel_amount_liters: liters,
+            fuel_location: locationToStore,
+            total_cost: totalCost,
+            fuel_type: fuelType,
+            fuel_consumption_l_per_100km: lPer100,
+            fuel_efficiency_km_per_l: kmPerL,
+            created_at: new Date(date),
+          })
+          .select()
+          .single();
+
+        if (insertErr) {
+          console.error("Insert fuel log error:", insertErr);
+          return window.alert(
+            insertErr.message ||
+              "Failed to save fill-up. Check console for details.",
+          );
+        }
+
+        // update vehicle current_mileage in vehicles table (keep this behavior)
+        const { error: updateErr } = await supabase
+          .from("vehicles")
+          .update({
+            current_mileage: currentMileage,
+          })
+          .eq("id", vehicleId)
+          .eq("user_id", user.id);
+
+        if (updateErr) {
+          console.error("Update vehicle mileage error (logbook):", updateErr);
+          window.alert(
+            "Fill-up saved but failed to update vehicle mileage. Check console for details.",
+          );
+        } else {
+          successEl.hidden = false;
+          const consumptionText = lPer100 === null ? "—" : `${lPer100} L/100km`;
+          const efficiencyText = kmPerL === null ? "—" : `${kmPerL} km/L`;
+          successEl.textContent = `Fill-up saved. Total: ${formatMoney(totalCost)}. Consumption: ${consumptionText} · ${efficiencyText}.`;
+          // reset form fields (keep vehicle selected)
+          litersInput.value = "";
+          priceInput.value = "";
+          currentInput.value = "";
+          consumptionManualInput.value = "";
+          efficiencyManualInput.value = "";
+          previousInput.value = currentMileage;
+          // update option dataset so next time it prepopulates
+          const opt = vehicleSelect.querySelector(
+            `option[value="${vehicleId}"]`,
+          );
+          if (opt) opt.dataset.currentMileage = currentMileage;
+          setTimeout(() => {
+            successEl.hidden = true;
+          }, 4000);
+        }
+      } catch (err) {
+        console.error("Unexpected error saving fill-up:", err);
+        window.alert("An unexpected error occurred. See console for details.");
+      }
+    });
 }
 
 // small helper used in template
 function escapeHtml(value) {
-  return String(value || "").replace(/[&<>'"]/g, (c) =>
-    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[c])
+  return String(value || "").replace(
+    /[&<>'"]/g,
+    (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[
+        c
+      ],
   );
 }
