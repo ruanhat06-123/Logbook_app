@@ -816,3 +816,97 @@ h3 {
     break-inside: avoid;
   }
 }
+
+/* Map modal base */
+#map-modal-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  z-index: 2000;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+#map-modal {
+  width: 92%;
+  max-width: 1100px;
+  height: 82%;
+  background: var(--card-bg);
+  color: var(--text-color);
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 12px 30px rgba(0,0,0,0.25);
+  border: 1px solid rgba(0,0,0,0.06);
+}
+
+/* Header */
+#map-modal > .modal-header {
+  display:flex;
+  gap:8px;
+  align-items:center;
+  padding:10px 14px;
+  border-bottom: 1px solid rgba(0,0,0,0.06);
+  background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent);
+}
+#map-modal .modal-title { font-weight:700; margin-right:8px; }
+
+/* Theme toggle */
+#map-theme-toggle {
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:6px 10px;
+  border-radius:8px;
+  border: 1px solid rgba(0,0,0,0.06);
+  background: var(--btn-bg);
+  color: var(--btn-text);
+  cursor: pointer;
+}
+#map-theme-toggle:focus { outline: 2px solid var(--focus); outline-offset:2px; }
+
+/* Map container and results column */
+#map-container { flex:1; min-height:0; background: var(--map-bg); }
+#map-search-results { width:320px; border-left:1px solid rgba(0,0,0,0.06); overflow:auto; background: var(--panel-bg); padding:10px; }
+
+/* Result rows */
+#map-results-list > div { padding:10px; border-bottom:1px solid rgba(0,0,0,0.04); cursor:pointer; }
+#map-results-list > div:hover { background: rgba(0,0,0,0.02); }
+
+/* Selected label and confirm */
+#map-selected-label { color: var(--muted); font-size:14px; }
+#map-select-confirm { margin-left:8px; }
+
+/* Light / dark variables */
+:root {
+  --card-bg: #ffffff;
+  --panel-bg: #fafafa;
+  --map-bg: #e9eef5;
+  --text-color: #111827;
+  --muted: #6b7280;
+  --btn-bg: #ffffff;
+  --btn-text: #111827;
+  --focus: #2563eb;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --card-bg: #0b1220;
+    --panel-bg: #07101a;
+    --map-bg: #07101a;
+    --text-color: #e6eef8;
+    --muted: #9aa6b2;
+    --btn-bg: #0f1724;
+    --btn-text: #e6eef8;
+    --focus: #60a5fa;
+  }
+}
+
+/* Small responsive tweaks */
+@media (max-width: 720px) {
+  #map-search-results { display:none; }
+  #map-modal { height: 88%; }
+}

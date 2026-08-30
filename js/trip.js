@@ -1,4 +1,11 @@
 // trips.js
+// Full updated trip UI with Mapbox + ORS proxy integration and improved light/dark map UI.
+// Assumptions:
+// - Server-side ORS proxy available at /api/ors/directions (server reads ORS_API_KEY).
+// - Runtime env script may expose window.__ENV.VITE_MAPBOX_TOKEN for static servers.
+// - When using Vite, import.meta.env.VITE_MAPBOX_TOKEN will be available in dev/build.
+// - This file expects `shell`, `supabase`, `requireAuth`, `requestServiceNotifications`, `notifyServiceDue`, and `serviceReminderMarkup` to exist.
+
 import "./app.js";
 import {
   notifyServiceDue,
@@ -10,33 +17,103 @@ const user = await requireAuth();
 if (!user) throw new Error("Not authenticated");
 
 if (user) {
-  const [{ data: vehiclesData }] = await Promise.all([
-    supabase.from("vehicles").select("*").order("number_plate"),
-  ]);
+  // ---------- Logging helpers ----------
+  const log = (...args) => console.log("[trip]", ...args);
+  const warn = (...args) => console.warn("[trip]", ...args);
+  const error = (...args) => console.error("[trip]", ...args);
 
-  const vehicleList = vehiclesData || [];
+  // ---------- Env / tokens ----------
+  const MAPBOX_TOKEN =
+    (typeof window !== "undefined" &&
+      window.__ENV &&
+      window.__ENV.VITE_MAPBOX_TOKEN) ||
+    (typeof import.meta !== "undefined" &&
+      import.meta.env &&
+      import.meta.env.VITE_MAPBOX_TOKEN) ||
+    "";
 
-  const vehicleOptionsHtml = vehicleList
-    .map((item) => {
-      const current = Number.isFinite(Number(item.current_mileage))
-        ? Number(item.current_mileage)
-        : "";
-      return `<option value="${item.id}" data-current-mileage="${current}">${escapeHtml(item.number_plate || "")} · ${escapeHtml(item.make || "Not specified")} ${escapeHtml(item.model || "")}</option>`;
-    })
-    .join("");
+  if (!MAPBOX_TOKEN)
+    warn(
+      "Mapbox token missing. Provide via /env.js (window.__ENV.VITE_MAPBOX_TOKEN) or VITE_MAPBOX_TOKEN.",
+    );
 
+  // Mapbox style URLs (constructed at runtime)
+  const LIGHT_STYLE = () =>
+    `https://api.mapbox.com/styles/v1/mapbox/streets-v11?access_token=${encodeURIComponent(MAPBOX_TOKEN)}`;
+  const DARK_STYLE = () =>
+    `https://api.mapbox.com/styles/v1/mapbox/dark-v10?access_token=${encodeURIComponent(MAPBOX_TOKEN)}`;
+
+  // ---------- Small utilities ----------
+  function debounce(fn, wait = 300) {
+    let t;
+    return (...args) => {
+      clearTimeout(t);
+      t = setTimeout(() => fn(...args), wait);
+    };
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? "").replace(
+      /[&<>'"]/g,
+      (c) =>
+        ({
+          "&": "&amp;",
+          "<": "&lt;",
+          ">": "&gt;",
+          "'": "&#39;",
+          '"': "&quot;",
+        })[c],
+    );
+  }
+
+  // ---------- Fetch vehicles and render UI ----------
+  let vehicleList = [];
+  try {
+    const { data: vehiclesData, error } = await supabase
+      .from("vehicles")
+      .select("*")
+      .order("number_plate");
+    if (error) {
+      warn("Failed to fetch vehicles", error);
+      vehicleList = [];
+    } else {
+      vehicleList = vehiclesData || [];
+    }
+  } catch (err) {
+    error("Unexpected vehicles fetch error", err);
+    vehicleList = [];
+  }
+
+  // Render full UI (includes map modal)
   await shell(
     "trip",
-    `<header class="topbar"><div><div class="eyebrow">Logbook / new trip</div><h1>Record a trip.</h1></div><div class="top-date"><strong>TRIP ENTRY</strong>Odometer-led</div></header>
+    `
+    <header class="topbar">
+      <div>
+        <div class="eyebrow">Logbook / new trip</div>
+        <h1>Record a trip.</h1>
+      </div>
+      <div class="top-date"><strong>TRIP ENTRY</strong> Odometer-led</div>
+    </header>
+
     ${vehicleList.map(serviceReminderMarkup).join("")}
+
     <div class="card" style="max-width:760px">
       <div class="notice">Trip distance is calculated from the start and end odometer readings or from the selected start/end locations. Pick a suggestion, choose a previous destination, or open the map to choose a precise point.</div>
+
       <form id="trip-form" class="form-grid">
         <div class="field full">
           <label for="vehicle">Vehicle</label>
           <select id="vehicle" required>
             <option value="">Select a vehicle</option>
-            ${vehicleOptionsHtml}
+            ${vehicleList
+              .map((item) => {
+                const current = Number.isFinite(Number(item.current_mileage))
+                  ? Number(item.current_mileage)
+                  : "";
+                return `<option value="${item.id}" data-current-mileage="${current}">${escapeHtml(item.number_plate || "")} · ${escapeHtml(item.make || "Not specified")} ${escapeHtml(item.model || "")}</option>`;
+              })
+              .join("")}
           </select>
         </div>
 
@@ -83,7 +160,6 @@ if (user) {
           <div style="position:relative">
             <input id="destination" type="text" maxlength="200" placeholder="End location (select from suggestions or Detect / open map)" autocomplete="off" required>
             <div id="destination-suggestions" class="suggestions" style="position:absolute;left:0;right:0;z-index:40;background:#fff;border:1px solid #ddd;display:none;max-height:260px;overflow:auto;"></div>
-
             <div style="margin-top:6px;display:flex;gap:8px;align-items:center">
               <button id="detect-destination" type="button" class="btn btn-secondary" style="padding:6px 10px">Detect</button>
               <button id="open-destination-map" type="button" class="btn btn-secondary" style="padding:6px 10px">Open map</button>
@@ -106,7 +182,6 @@ if (user) {
           </select>
         </div>
 
-        <!-- Visible only when purpose === "other" -->
         <div class="field" id="purpose-other-field" style="display:none;">
           <label for="purpose-other">Please describe the purpose</label>
           <input id="purpose-other" type="text" maxlength="200" placeholder="Describe the purpose" />
@@ -117,42 +192,40 @@ if (user) {
           <button class="btn btn-primary" type="submit">Save trip →</button>
         </div>
       </form>
+
       <div id="success" class="notice" hidden></div>
     </div>
 
-    <!-- Map modal (hidden until needed) -->
-    <div id="map-modal-backdrop" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:2000;align-items:center;justify-content:center">
-      <div id="map-modal" role="dialog" aria-modal="true" style="width:90%;max-width:1000px;height:80%;background:#fff;border-radius:6px;overflow:hidden;display:flex;flex-direction:column">
-        <div style="padding:8px 12px;border-bottom:1px solid #eee;display:flex;align-items:center;gap:8px">
-          <div style="font-weight:600">Select location on map</div>
-          <input id="map-search" placeholder="Search places on map (e.g. Joburg Zoo or 123 Main St)" style="flex:1;padding:6px;border:1px solid #ddd;border-radius:4px" />
+    <!-- Map modal -->
+    <div id="map-modal-backdrop" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:2000;align-items:center;justify-content:center;padding:20px">
+      <div id="map-modal" role="dialog" aria-modal="true" style="width:92%;max-width:1100px;height:82%;background:var(--card-bg,#fff);color:var(--text-color,#111);border-radius:12px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 12px 30px rgba(0,0,0,0.25);border:1px solid rgba(0,0,0,0.06)">
+        <div class="modal-header" style="display:flex;gap:8px;align-items:center;padding:10px 14px;border-bottom:1px solid rgba(0,0,0,0.06);background:linear-gradient(180deg, rgba(255,255,255,0.02), transparent)">
+          <div class="modal-title" style="font-weight:700">Select location on map</div>
+          <input id="map-search" placeholder="Search places on map (e.g. Joburg Zoo or 123 Main St)" style="flex:1;padding:6px;border:1px solid #ddd;border-radius:6px" />
           <button id="map-search-btn" class="btn btn-secondary" style="padding:6px 10px">Search</button>
-          <div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button id="map-theme-toggle" class="btn btn-secondary" type="button" title="Toggle map theme" style="padding:6px 10px;border-radius:8px">☀️ Light</button>
             <button id="map-modal-center" class="btn btn-secondary" style="margin-left:8px">Center here</button>
             <button id="map-modal-close" class="btn btn-primary" style="margin-left:8px">Done</button>
           </div>
         </div>
         <div style="display:flex;flex:1;min-height:0">
-          <div id="map-container" style="flex:1;min-height:0"></div>
-          <div id="map-search-results" style="width:320px;border-left:1px solid #eee;overflow:auto;background:#fafafa;padding:8px;display:flex;flex-direction:column">
+          <div id="map-container" style="flex:1;min-height:0;background:var(--map-bg,#e9eef5)"></div>
+          <div id="map-search-results" style="width:320px;border-left:1px solid rgba(0,0,0,0.06);overflow:auto;background:var(--panel-bg,#fafafa);padding:10px;display:flex;flex-direction:column">
             <div style="font-weight:600;margin-bottom:8px">Search results</div>
             <div id="map-results-list" style="flex:1;overflow:auto"></div>
           </div>
         </div>
-        <div style="padding:8px;border-top:1px solid #eee;display:flex;gap:8px;align-items:center">
-          <div id="map-selected-label" style="flex:1;color:#333">No point selected</div>
+        <div style="padding:8px;border-top:1px solid rgba(0,0,0,0.06);display:flex;gap:8px;align-items:center">
+          <div id="map-selected-label" style="flex:1;color:var(--muted,#6b7280)">No point selected</div>
           <button id="map-select-confirm" class="btn btn-primary">Use this point</button>
         </div>
       </div>
-    </div>`,
+    </div>
+  `,
   );
 
-  await requestServiceNotifications();
-  vehicleList.forEach(notifyServiceDue);
-
-  // -------------------------
-  // DOM refs
-  // -------------------------
+  // ---------- DOM refs ----------
   const vehicleSelect = document.querySelector("#vehicle");
   const startOdoInput = document.querySelector("#start-odo");
   const useLastEndBtn = document.querySelector("#use-last-end-btn");
@@ -185,52 +258,27 @@ if (user) {
   const mapSearchInput = document.querySelector("#map-search");
   const mapSearchBtn = document.querySelector("#map-search-btn");
   const mapResultsList = document.querySelector("#map-results-list");
+  const mapThemeToggleBtn = document.querySelector("#map-theme-toggle");
 
   dateInput.value = new Date().toISOString().slice(0, 10);
 
-  // Keep selected coordinates when user picks from suggestions
-  // originCoords and destCoords are arrays [lon, lat] when set
-  let originCoords = null;
-  let destCoords = null;
-
-  // Track whether last destination set was via geolocation detect or map selection
+  // ---------- State ----------
+  let originCoords = null; // [lon, lat]
+  let destCoords = null; // [lon, lat]
   let destWasDetectedByGeolocation = false;
 
-  // -------------------------
-  // Mapbox token (client) from Vite env
-  // -------------------------
-  const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN || "";
-
-  // Debounce helper
-  function debounce(fn, wait = 300) {
-    let t;
-    return (...args) => {
-      clearTimeout(t);
-      t = setTimeout(() => fn(...args), wait);
-    };
-  }
-
-  // -------------------------
-  // Populate start odometer (robust Supabase handling)
-  // -------------------------
+  // ---------- Odometer population ----------
   async function populateStartOdometer(vehicleId) {
     startOdoInput.value = "";
     if (!vehicleId) return;
-
+    const selectedOption = vehicleSelect.querySelector(
+      `option[value="${vehicleId}"]`,
+    );
+    if (selectedOption && selectedOption.dataset.currentMileage) {
+      startOdoInput.value = Number(selectedOption.dataset.currentMileage);
+      return;
+    }
     try {
-      // Try dataset on option first
-      const selectedOption = vehicleSelect.querySelector(
-        `option[value="${vehicleId}"]`,
-      );
-      if (selectedOption) {
-        const dataVal = selectedOption.dataset.currentMileage;
-        if (dataVal !== undefined && dataVal !== "") {
-          startOdoInput.value = Number(dataVal);
-          return;
-        }
-      }
-
-      // Prefer last entry from car_logbook
       const { data: lastLog, error: lastLogErr } = await supabase
         .from("car_logbook")
         .select("current_mileage, created_at")
@@ -238,103 +286,71 @@ if (user) {
         .order("created_at", { ascending: false })
         .limit(1)
         .single();
-
-      if (lastLogErr) {
-        console.warn(
-          "populateStartOdometer: car_logbook query error",
-          lastLogErr,
-        );
-      }
-      if (lastLog && Number.isFinite(Number(lastLog.current_mileage))) {
+      if (
+        !lastLogErr &&
+        lastLog &&
+        Number.isFinite(Number(lastLog.current_mileage))
+      ) {
         startOdoInput.value = Number(lastLog.current_mileage);
         return;
       }
-
-      // Fallback to vehicles table
       const { data: vehicleRow, error: vehicleErr } = await supabase
         .from("vehicles")
         .select("current_mileage")
         .eq("id", vehicleId)
         .single();
-
-      if (vehicleErr) {
-        console.warn("populateStartOdometer: vehicles query error", vehicleErr);
-      }
-      if (vehicleRow && Number.isFinite(Number(vehicleRow.current_mileage))) {
+      if (
+        !vehicleErr &&
+        vehicleRow &&
+        Number.isFinite(Number(vehicleRow.current_mileage))
+      ) {
         startOdoInput.value = Number(vehicleRow.current_mileage);
-        return;
       }
     } catch (err) {
-      console.error("Error populating start odometer:", err);
+      error("populateStartOdometer error", err);
     }
   }
 
   vehicleSelect.addEventListener("change", async () => {
     await populateStartOdometer(vehicleSelect.value);
   });
+  if (vehicleSelect.value)
+    setTimeout(() => populateStartOdometer(vehicleSelect.value), 0);
 
-  // call once on load if a vehicle is preselected
-  if (vehicleSelect.value) {
-    setTimeout(async () => {
-      await populateStartOdometer(vehicleSelect.value);
-    }, 0);
-  }
-
-  // -------------------------
-  // Purpose "Other" show/hide helper (robust)
-  // -------------------------
+  // ---------- Purpose other ----------
   function updatePurposeOtherVisibility() {
-    if (!purposeSelect || !purposeOtherField || !purposeOtherInput) return;
     const isOther = purposeSelect.value === "other";
     purposeOtherField.style.display = isOther ? "block" : "none";
     purposeOtherInput.required = isOther;
     if (!isOther) purposeOtherInput.value = "";
   }
-
-  if (purposeSelect) {
-    purposeSelect.removeEventListener("change", updatePurposeOtherVisibility);
-    purposeSelect.addEventListener("change", updatePurposeOtherVisibility);
-  }
+  purposeSelect.addEventListener("change", updatePurposeOtherVisibility);
   setTimeout(updatePurposeOtherVisibility, 0);
 
-  // -------------------------
-  // Mapbox Places (forward geocoding) for autocomplete and map search
-  // -------------------------
+  // ---------- Mapbox geocoding helpers ----------
   async function searchPlacesMapbox(query, limit = 8) {
+    if (!MAPBOX_TOKEN) return [];
     try {
-      if (!query || query.trim().length < 1) return [];
       const types = "address,poi,place,neighborhood";
       const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${encodeURIComponent(MAPBOX_TOKEN)}&autocomplete=true&limit=${limit}&types=${types}`;
       const resp = await fetch(url);
       if (!resp.ok) {
-        console.warn(
-          "Mapbox geocoding failed",
-          resp.status,
-          await resp.text().catch(() => ""),
-        );
+        warn("Mapbox geocoding failed", resp.status);
         return [];
       }
       const data = await resp.json();
-      if (!data || !Array.isArray(data.features)) return [];
-      return data.features
-        .map((f) => {
-          const label =
-            f.text || (f.place_name ? f.place_name.split(",")[0] : "");
-          const secondary = f.place_name
-            ? f.place_name.replace(label, "").replace(/^,\s*/, "")
-            : "";
-          return {
-            label: label || f.place_name || "",
-            secondary: secondary || "",
-            coords: f.center
-              ? [Number(f.center[0]), Number(f.center[1])]
-              : null,
-            raw: f,
-          };
-        })
+      return (data.features || [])
+        .map((f) => ({
+          label: f.text || f.place_name || "",
+          secondary: f.place_name
+            ? f.place_name.replace(f.text || "", "").replace(/^,\s*/, "")
+            : "",
+          coords: f.center ? [Number(f.center[0]), Number(f.center[1])] : null,
+          raw: f,
+        }))
         .filter((i) => i.coords && i.label);
     } catch (err) {
-      console.error("searchPlacesMapbox error:", err);
+      error("searchPlacesMapbox error", err);
       return [];
     }
   }
@@ -375,7 +391,7 @@ if (user) {
       div.appendChild(primary);
       if (it.secondary) div.appendChild(secondary);
 
-      div.addEventListener("click", async () => {
+      div.addEventListener("click", () => {
         inputEl.value = `${it.label}${it.secondary ? ", " + it.secondary : ""}`;
         setCoordsCallback(it.coords);
         container.style.display = "none";
@@ -428,19 +444,16 @@ if (user) {
 
   originInput.addEventListener("input", (e) => originSearch(e.target.value));
   destinationInput.addEventListener("input", (e) => destSearch(e.target.value));
-
   originInput.addEventListener("blur", () => {
     setTimeout(() => tryAutoCalculateIfReady(), 250);
   });
   destinationInput.addEventListener("blur", () => {
     setTimeout(() => tryAutoCalculateIfReady(), 250);
   });
-
-  const destinationTypingStopped = debounce(
-    () => tryAutoCalculateIfReady(),
-    800,
+  destinationInput.addEventListener(
+    "keyup",
+    debounce(() => tryAutoCalculateIfReady(), 800),
   );
-  destinationInput.addEventListener("keyup", () => destinationTypingStopped());
 
   document.addEventListener("click", (e) => {
     if (!originSuggestions.contains(e.target) && e.target !== originInput)
@@ -452,15 +465,9 @@ if (user) {
       destinationSuggestions.style.display = "none";
   });
 
-  originInput.addEventListener("focus", () => {
-    if (originInput.value) originSearch(originInput.value);
-  });
-  destinationInput.addEventListener("focus", () => {
-    if (destinationInput.value) destSearch(destinationInput.value);
-  });
-
-  // Reverse geocode helper (Mapbox reverse)
+  // ---------- Reverse geocode ----------
   async function reverseGeocodeMapbox(lat, lon) {
+    if (!MAPBOX_TOKEN) return `${lat.toFixed(6)},${lon.toFixed(6)}`;
     try {
       const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(lon)},${encodeURIComponent(lat)}.json?access_token=${encodeURIComponent(MAPBOX_TOKEN)}&limit=1`;
       const resp = await fetch(url);
@@ -473,7 +480,7 @@ if (user) {
       }
       return `${lat.toFixed(6)},${lon.toFixed(6)}`;
     } catch (err) {
-      console.warn("Reverse geocode error:", err);
+      warn("Reverse geocode error:", err);
       return `${lat.toFixed(6)},${lon.toFixed(6)}`;
     }
   }
@@ -488,6 +495,7 @@ if (user) {
     }, 6000);
   }
 
+  // ---------- Geolocation detect ----------
   async function detectDestination() {
     if (!navigator.geolocation) {
       showLocationStatus("Geolocation not supported by this browser", true);
@@ -508,7 +516,7 @@ if (user) {
           showLocationStatus("Destination detected");
           tryAutoCalculateIfReady();
         } catch (err) {
-          console.error("Destination detection error:", err);
+          error("Destination detection error", err);
           destinationInput.value = `${pos.coords.latitude.toFixed(6)},${pos.coords.longitude.toFixed(6)}`;
           destCoords = [
             Number(pos.coords.longitude),
@@ -523,17 +531,15 @@ if (user) {
         }
       },
       (err) => {
-        console.warn("Geolocation error:", err);
         detectDestBtn.disabled = false;
-        if (err.code === 1) {
+        warn("Geolocation error", err);
+        if (err.code === 1)
           showLocationStatus("Location permission denied", true);
-        } else if (err.code === 2) {
+        else if (err.code === 2)
           showLocationStatus("Position unavailable", true);
-        } else if (err.code === 3) {
+        else if (err.code === 3)
           showLocationStatus("Location request timed out", true);
-        } else {
-          showLocationStatus("Failed to detect destination", true);
-        }
+        else showLocationStatus("Failed to detect destination", true);
       },
       {
         enableHighAccuracy: true,
@@ -542,15 +548,13 @@ if (user) {
       },
     );
   }
-
   detectDestBtn?.addEventListener("click", detectDestination);
 
-  // Directions: call server proxy /api/ors/directions (server injects ORS_API_KEY)
+  // ---------- ORS directions via server proxy ----------
   async function calculateDrivingDistanceKm(originCoordsArr, destCoordsArr) {
     try {
       if (!originCoordsArr || !destCoordsArr)
         throw new Error("Missing coordinates");
-      // Call server proxy which should forward to OpenRouteService using server-side ORS_API_KEY
       const resp = await fetch("/api/ors/directions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -558,30 +562,29 @@ if (user) {
       });
       if (!resp.ok) {
         const text = await resp.text().catch(() => "");
-        throw new Error("Directions request failed: " + text);
+        error("ORS proxy returned non-ok", resp.status, text);
+        throw new Error("Directions request failed: " + resp.status);
       }
       const data = await resp.json();
       const meters = data?.routes?.[0]?.summary?.distance;
       if (typeof meters === "number") return meters / 1000;
       throw new Error("No route found");
     } catch (err) {
-      console.error("Directions error:", err);
+      error("calculateDrivingDistanceKm error", err);
       throw err;
     }
   }
 
-  // Helper to geocode a single address to coords if user didn't pick from suggestions
+  // ---------- Geocode single address ----------
   async function geocodeSingle(address) {
     if (!address) return null;
     const coordMatch = address
       .trim()
-      .match(/^(-?\d+(\.\d+)?)[,\s]+(-?\d+(\.\d+)?)$/);
+      .match(/^(-?\d+(\.\d+)?)[,\\s]+(-?\d+(\.\d+)?)$/);
     if (coordMatch) {
       const a = Number(coordMatch[1]);
       const b = Number(coordMatch[3]);
-      if (a >= -90 && a <= 90 && b >= -180 && b <= 180) {
-        return [b, a];
-      }
+      if (a >= -90 && a <= 90 && b >= -180 && b <= 180) return [b, a];
       return [a, b];
     }
     const results = await searchPlacesMapbox(address, 6);
@@ -589,6 +592,7 @@ if (user) {
     return null;
   }
 
+  // ---------- Auto-calc ----------
   async function tryAutoCalculateIfReady() {
     const originText = originInput.value.trim();
     const destinationText = destinationInput.value.trim();
@@ -611,9 +615,7 @@ if (user) {
       return;
 
     const startOdo = Number(startOdoInput.value);
-    if (!Number.isFinite(startOdo)) {
-      return;
-    }
+    if (!Number.isFinite(startOdo)) return;
 
     let oCoords = originCoords;
     let dCoords = destCoords;
@@ -622,7 +624,7 @@ if (user) {
       if (!oCoords && originText.length > 0) {
         oCoords = await geocodeSingle(originText);
         if (!oCoords) {
-          console.warn("Auto-calc aborted: cannot geocode origin");
+          warn("Auto-calc aborted: cannot geocode origin");
           return;
         }
       }
@@ -630,39 +632,13 @@ if (user) {
       if (!dCoords && destinationText.length > 0) {
         dCoords = await geocodeSingle(destinationText);
         if (!dCoords) {
-          console.warn("Auto-calc aborted: cannot geocode destination");
+          warn("Auto-calc aborted: cannot geocode destination");
           return;
         }
       }
 
       oCoords = [Number(oCoords[0]), Number(oCoords[1])];
       dCoords = [Number(dCoords[0]), Number(dCoords[1])];
-
-      if (
-        !(
-          oCoords[0] >= -180 &&
-          oCoords[0] <= 180 &&
-          oCoords[1] >= -90 &&
-          oCoords[1] <= 90
-        )
-      ) {
-        console.warn("Auto-calc aborted: origin coords out of range", oCoords);
-        return;
-      }
-      if (
-        !(
-          dCoords[0] >= -180 &&
-          dCoords[0] <= 180 &&
-          dCoords[1] >= -90 &&
-          dCoords[1] <= 90
-        )
-      ) {
-        console.warn(
-          "Auto-calc aborted: destination coords out of range",
-          dCoords,
-        );
-        return;
-      }
 
       showLocationStatus("Calculating distance…");
       const distanceKm = await calculateDrivingDistanceKm(oCoords, dCoords);
@@ -680,7 +656,7 @@ if (user) {
       destCoords = dCoords;
       destWasDetectedByGeolocation = false;
     } catch (err) {
-      console.error("Auto-calc failed:", err);
+      warn("Auto-calc failed:", err);
       showLocationStatus("Automatic distance calculation failed", true);
     } finally {
       setTimeout(() => {
@@ -689,10 +665,16 @@ if (user) {
     }
   }
 
-  // Mapbox GL JS lazy loader and small preview
+  // ---------- Mapbox GL loader and modal with theme toggle ----------
   let mapboxLoaded = false;
   let mapboxLoading = false;
+  let modalMap = null;
+  let modalMarker = null;
+  let modalCurrentCoords = null;
+
   async function ensureMapboxGL() {
+    log("ensureMapboxGL start", { mapboxLoaded, mapboxLoading });
+    if (!MAPBOX_TOKEN) throw new Error("Mapbox token missing");
     if (mapboxLoaded) return;
     if (mapboxLoading) {
       return new Promise((resolve) => {
@@ -704,6 +686,7 @@ if (user) {
       });
     }
     mapboxLoading = true;
+
     const cssHref = "https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css";
     if (!document.querySelector(`link[href="${cssHref}"]`)) {
       const link = document.createElement("link");
@@ -711,6 +694,7 @@ if (user) {
       link.href = cssHref;
       document.head.appendChild(link);
     }
+
     const scriptSrc =
       "https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js";
     if (!document.querySelector(`script[src="${scriptSrc}"]`)) {
@@ -722,8 +706,10 @@ if (user) {
         document.head.appendChild(s);
       });
     }
+
     mapboxLoaded = true;
     mapboxLoading = false;
+    log("Mapbox GL loaded");
   }
 
   async function showSmallMapPreview(containerEl, coords) {
@@ -735,9 +721,7 @@ if (user) {
       mapboxgl.accessToken = MAPBOX_TOKEN;
       const map = new mapboxgl.Map({
         container: containerEl,
-        style:
-          "https://api.mapbox.com/styles/v1/mapbox/streets-v11?access_token=" +
-          encodeURIComponent(MAPBOX_TOKEN),
+        style: LIGHT_STYLE(),
         center: [coords[0], coords[1]],
         zoom: 14,
         interactive: false,
@@ -747,161 +731,242 @@ if (user) {
         map.resize();
       }, 50);
     } catch (err) {
-      console.warn("Small map preview failed:", err);
+      warn("Small map preview failed:", err);
       containerEl.style.display = "none";
     }
   }
 
-  // Map modal logic (same as before)
-  let modalMap = null;
-  let modalMarker = null;
-  let modalCurrentCoords = null;
-
-  async function openMapModal(initialCoords = null, onConfirm) {
-    await ensureMapboxGL();
-    mapModalBackdrop.style.display = "flex";
-
-    mapboxgl.accessToken = MAPBOX_TOKEN;
-
-    if (!modalMap) {
-      modalMap = new mapboxgl.Map({
-        container: mapContainer,
-        style:
-          "https://api.mapbox.com/styles/v1/mapbox/streets-v11?access_token=" +
-          encodeURIComponent(MAPBOX_TOKEN),
-        center: initialCoords
-          ? [initialCoords[0], initialCoords[1]]
-          : [28.0473, -26.2041],
-        zoom: initialCoords ? 14 : 12,
-      });
-
-      modalMap.on("click", (e) => {
-        const lng = e.lngLat.lng;
-        const lat = e.lngLat.lat;
-        setModalMarker([lng, lat]);
-      });
-    } else {
-      modalMap.resize();
-      if (initialCoords)
-        modalMap.setCenter([initialCoords[0], initialCoords[1]]);
+  // Theme helpers
+  function getPreferredTheme() {
+    const stored = localStorage.getItem("mapTheme");
+    if (stored === "light" || stored === "dark") return stored;
+    return window.matchMedia &&
+      window.matchMedia("(prefers-color-scheme: dark)").matches
+      ? "dark"
+      : "light";
+  }
+  function setPreferredTheme(theme) {
+    localStorage.setItem("mapTheme", theme);
+    if (theme === "dark") document.documentElement.classList.add("dark");
+    else document.documentElement.classList.remove("dark");
+    // update toggle label if present
+    if (mapThemeToggleBtn) {
+      mapThemeToggleBtn.textContent = theme === "dark" ? "🌙 Dark" : "☀️ Light";
     }
-
-    if (initialCoords) setModalMarker(initialCoords);
-    mapSelectedLabel.textContent = modalCurrentCoords
-      ? `Selected: ${modalCurrentCoords[1].toFixed(6)}, ${modalCurrentCoords[0].toFixed(6)}`
-      : "No point selected";
-
-    const confirmHandler = async () => {
-      if (!modalCurrentCoords) return;
-      const label = await reverseGeocodeMapbox(
-        modalCurrentCoords[1],
-        modalCurrentCoords[0],
-      );
-      onConfirm && onConfirm({ coords: modalCurrentCoords, label });
-      closeMapModal();
-    };
-    mapSelectConfirm.onclick = confirmHandler;
-    mapModalClose.onclick = closeMapModal;
-    mapModalCenterBtn.onclick = () => {
-      if (modalCurrentCoords)
-        modalMap.setCenter([modalCurrentCoords[0], modalCurrentCoords[1]]);
-    };
-
-    mapSearchBtn.onclick = async () => {
-      const q = mapSearchInput.value.trim();
-      if (!q) return;
-      mapResultsList.innerHTML = `<div style="padding:8px;color:#666">Searching…</div>`;
-      try {
-        const results = await searchPlacesMapbox(q, 12);
-        renderMapSearchResults(results);
-        if (results && results.length > 0) {
-          const first = results[0];
-          modalMap.setCenter([first.coords[0], first.coords[1]]);
-          modalMap.setZoom(14);
-        }
-      } catch (err) {
-        mapResultsList.innerHTML = `<div style="padding:8px;color:#a00">Search failed</div>`;
-      }
-    };
-
-    mapSearchInput.onkeydown = (e) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        mapSearchBtn.click();
-      }
-    };
-
-    function setModalMarker(coords) {
-      modalCurrentCoords = coords;
-      if (modalMarker) modalMarker.setLngLat([coords[0], coords[1]]);
-      else
-        modalMarker = new mapboxgl.Marker({ draggable: true })
-          .setLngLat([coords[0], coords[1]])
-          .addTo(modalMap)
-          .on("dragend", (ev) => {
-            const p = ev.target.getLngLat();
-            modalCurrentCoords = [p.lng, p.lat];
-            mapSelectedLabel.textContent = `Selected: ${modalCurrentCoords[1].toFixed(6)}, ${modalCurrentCoords[0].toFixed(6)}`;
-          });
-      mapSelectedLabel.textContent = `Selected: ${coords[1].toFixed(6)}, ${coords[0].toFixed(6)}`;
-      modalMap.setCenter([coords[0], coords[1]]);
-      modalMap.setZoom(15);
-    }
-
-    function renderMapSearchResults(results) {
-      mapResultsList.innerHTML = "";
-      if (!results || results.length === 0) {
-        mapResultsList.innerHTML = `<div style="padding:8px;color:#666">No results</div>`;
-        return;
-      }
-      results.forEach((r) => {
-        const row = document.createElement("div");
-        row.style.padding = "8px";
-        row.style.borderBottom = "1px solid #eee";
-        row.style.cursor = "pointer";
-        const title = document.createElement("div");
-        title.textContent = r.label;
-        title.style.fontWeight = "600";
-        const sub = document.createElement("div");
-        sub.textContent = r.secondary || "";
-        sub.style.fontSize = "12px";
-        sub.style.color = "#666";
-        row.appendChild(title);
-        if (r.secondary) row.appendChild(sub);
-        row.addEventListener("click", () => {
-          setModalMarker(r.coords);
-        });
-        mapResultsList.appendChild(row);
+  }
+  function applyMapStyleToMap(mapInstance, theme) {
+    if (!mapInstance) return;
+    const styleUrl = theme === "dark" ? DARK_STYLE() : LIGHT_STYLE();
+    try {
+      mapInstance.setStyle(styleUrl);
+      mapInstance.once("styledata", () => {
+        setTimeout(() => mapInstance.resize(), 80);
       });
-    }
-
-    function closeMapModal() {
-      mapModalBackdrop.style.display = "none";
+    } catch (err) {
+      warn("applyMapStyleToMap error", err);
     }
   }
 
-  openOriginMapBtn?.addEventListener("click", async () => {
-    const initial = originCoords ? [originCoords[0], originCoords[1]] : null;
-    await openMapModal(initial, ({ coords, label }) => {
-      originCoords = coords;
-      originInput.value = label || originInput.value;
-      showSmallMapPreview(originMapPreview, coords);
-      tryAutoCalculateIfReady();
-    });
-  });
+  async function openMapModal(initialCoords = null, onConfirm) {
+    try {
+      // show modal first so container has layout
+      mapModalBackdrop.style.display = "flex";
 
-  openDestMapBtn?.addEventListener("click", async () => {
-    const initial = destCoords ? [destCoords[0], destCoords[1]] : null;
-    await openMapModal(initial, ({ coords, label }) => {
-      destCoords = coords;
-      destinationInput.value = label || destinationInput.value;
-      showSmallMapPreview(destMapPreview, coords);
-      destWasDetectedByGeolocation = true;
-      tryAutoCalculateIfReady();
-    });
-  });
+      await ensureMapboxGL();
+      mapboxgl.accessToken = MAPBOX_TOKEN;
 
-  // Use last trip end as origin (only destination -> origin)
+      // ensure theme toggle label initial state
+      const initialTheme = getPreferredTheme();
+      setPreferredTheme(initialTheme);
+
+      if (!modalMap) {
+        modalMap = new mapboxgl.Map({
+          container: mapContainer,
+          style: initialTheme === "dark" ? DARK_STYLE() : LIGHT_STYLE(),
+          center: initialCoords
+            ? [initialCoords[0], initialCoords[1]]
+            : [28.0473, -26.2041],
+          zoom: initialCoords ? 14 : 12,
+        });
+
+        modalMap.on("click", (e) => {
+          const lng = e.lngLat.lng;
+          const lat = e.lngLat.lat;
+          setModalMarker([lng, lat]);
+        });
+      } else {
+        // switch style to match theme
+        applyMapStyleToMap(modalMap, getPreferredTheme());
+        modalMap.resize();
+        if (initialCoords)
+          modalMap.setCenter([initialCoords[0], initialCoords[1]]);
+      }
+
+      if (initialCoords) setModalMarker(initialCoords);
+      mapSelectedLabel.textContent = modalCurrentCoords
+        ? `Selected: ${modalCurrentCoords[1].toFixed(6)}, ${modalCurrentCoords[0].toFixed(6)}`
+        : "No point selected";
+
+      // wire search button
+      mapSearchBtn.onclick = async () => {
+        const q = mapSearchInput.value.trim();
+        if (!q) return;
+        mapResultsList.innerHTML = `<div style="padding:8px;color:#666">Searching…</div>`;
+        try {
+          const results = await searchPlacesMapbox(q, 12);
+          renderMapSearchResults(results);
+          if (results && results.length > 0) {
+            const first = results[0];
+            modalMap.setCenter([first.coords[0], first.coords[1]]);
+            modalMap.setZoom(14);
+          }
+        } catch (err) {
+          mapResultsList.innerHTML = `<div style="padding:8px;color:#a00">Search failed</div>`;
+        }
+      };
+
+      mapSearchInput.onkeydown = (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          mapSearchBtn.click();
+        }
+      };
+
+      mapSelectConfirm.onclick = async () => {
+        if (!modalCurrentCoords) return;
+        const label = await reverseGeocodeMapbox(
+          modalCurrentCoords[1],
+          modalCurrentCoords[0],
+        );
+        onConfirm && onConfirm({ coords: modalCurrentCoords, label });
+        closeMapModal();
+      };
+
+      mapModalClose.onclick = closeMapModal;
+      mapModalCenterBtn.onclick = () => {
+        if (modalCurrentCoords)
+          modalMap.setCenter([modalCurrentCoords[0], modalCurrentCoords[1]]);
+      };
+
+      function setModalMarker(coords) {
+        modalCurrentCoords = coords;
+        if (modalMarker) modalMarker.setLngLat([coords[0], coords[1]]);
+        else
+          modalMarker = new mapboxgl.Marker({ draggable: true })
+            .setLngLat([coords[0], coords[1]])
+            .addTo(modalMap)
+            .on("dragend", (ev) => {
+              const p = ev.target.getLngLat();
+              modalCurrentCoords = [p.lng, p.lat];
+              mapSelectedLabel.textContent = `Selected: ${modalCurrentCoords[1].toFixed(6)}, ${modalCurrentCoords[0].toFixed(6)}`;
+            });
+        mapSelectedLabel.textContent = `Selected: ${coords[1].toFixed(6)}, ${coords[0].toFixed(6)}`;
+        modalMap.setCenter([coords[0], coords[1]]);
+        modalMap.setZoom(15);
+      }
+
+      function renderMapSearchResults(results) {
+        mapResultsList.innerHTML = "";
+        if (!results || results.length === 0) {
+          mapResultsList.innerHTML = `<div style="padding:8px;color:#666">No results</div>`;
+          return;
+        }
+        results.forEach((r) => {
+          const row = document.createElement("div");
+          row.style.padding = "8px";
+          row.style.borderBottom = "1px solid #eee";
+          row.style.cursor = "pointer";
+          const title = document.createElement("div");
+          title.textContent = r.label;
+          title.style.fontWeight = "600";
+          const sub = document.createElement("div");
+          sub.textContent = r.secondary || "";
+          sub.style.fontSize = "12px";
+          sub.style.color = "#666";
+          row.appendChild(title);
+          if (r.secondary) row.appendChild(sub);
+          row.addEventListener("click", () => {
+            setModalMarker(r.coords);
+          });
+          mapResultsList.appendChild(row);
+        });
+      }
+
+      function closeMapModal() {
+        mapModalBackdrop.style.display = "none";
+      }
+
+      // ensure theme toggle wiring
+      if (mapThemeToggleBtn) {
+        mapThemeToggleBtn.textContent =
+          getPreferredTheme() === "dark" ? "🌙 Dark" : "☀️ Light";
+        mapThemeToggleBtn.onclick = () => {
+          const next = getPreferredTheme() === "dark" ? "light" : "dark";
+          setPreferredTheme(next);
+          applyMapStyleToMap(modalMap, next);
+        };
+      }
+
+      // react to system theme changes if user hasn't chosen explicitly
+      if (window.matchMedia) {
+        window
+          .matchMedia("(prefers-color-scheme: dark)")
+          .addEventListener("change", (e) => {
+            const stored = localStorage.getItem("mapTheme");
+            if (stored) return;
+            const sys = e.matches ? "dark" : "light";
+            setPreferredTheme(sys);
+            applyMapStyleToMap(modalMap, sys);
+          });
+      }
+    } catch (err) {
+      mapModalBackdrop.style.display = "none";
+      error("openMapModal error", err);
+      showLocationStatus("Map failed to open. See console for details.", true);
+      throw err;
+    }
+  }
+
+  // Attach open map handlers
+  function attachMapOpenHandlers() {
+    log("attachMapOpenHandlers", {
+      openOrigin: !!openOriginMapBtn,
+      openDest: !!openDestMapBtn,
+    });
+    if (openOriginMapBtn)
+      openOriginMapBtn.addEventListener("click", async () => {
+        log("open-origin clicked");
+        try {
+          await openMapModal(originCoords || null, ({ coords, label }) => {
+            originCoords = coords;
+            originInput.value = label || originInput.value;
+            showSmallMapPreview(originMapPreview, coords);
+            tryAutoCalculateIfReady();
+          });
+        } catch (err) {
+          error("open-origin error", err);
+        }
+      });
+
+    if (openDestMapBtn)
+      openDestMapBtn.addEventListener("click", async () => {
+        log("open-destination clicked");
+        try {
+          await openMapModal(destCoords || null, ({ coords, label }) => {
+            destCoords = coords;
+            destinationInput.value = label || destinationInput.value;
+            showSmallMapPreview(destMapPreview, coords);
+            destWasDetectedByGeolocation = true;
+            tryAutoCalculateIfReady();
+          });
+        } catch (err) {
+          error("open-destination error", err);
+        }
+      });
+  }
+  setTimeout(attachMapOpenHandlers, 50);
+
+  // ---------- Use last trip end as origin ----------
   async function fetchLastTripForVehicle(vehicleId) {
     if (!vehicleId) return null;
     try {
@@ -912,14 +977,13 @@ if (user) {
         .order("created_at", { ascending: false })
         .limit(1)
         .single();
-
       if (error) {
-        console.warn("fetchLastTripForVehicle error", error);
+        warn("fetchLastTripForVehicle error", error);
         return null;
       }
       return lastTrip || null;
     } catch (err) {
-      console.error("fetchLastTripForVehicle unexpected error", err);
+      error("fetchLastTripForVehicle unexpected error", err);
       return null;
     }
   }
@@ -934,7 +998,6 @@ if (user) {
         showLocationStatus("No previous trips found for this vehicle", true);
         return;
       }
-
       if (lastTrip.trip_destination) {
         originInput.value = lastTrip.trip_destination;
         const coords = await geocodeSingle(lastTrip.trip_destination);
@@ -951,12 +1014,12 @@ if (user) {
         showLocationStatus("Last trip has no recorded destination", true);
       }
     } catch (err) {
-      console.error("useLastEndBtn click error:", err);
+      error("useLastEndBtn click error:", err);
       showLocationStatus("Failed to load last trip destination", true);
     }
   });
 
-  // Submit handler
+  // ---------- Submit handler ----------
   document
     .querySelector("#trip-form")
     .addEventListener("submit", async (event) => {
@@ -1010,7 +1073,7 @@ if (user) {
           .single();
 
         if (insertErr) {
-          console.error("Insert trip error:", insertErr);
+          error("Insert trip error:", insertErr);
           return window.alert(
             insertErr.message ||
               "Failed to save trip. Check console for details.",
@@ -1024,7 +1087,7 @@ if (user) {
           .eq("user_id", user.id);
 
         if (updateErr) {
-          console.error("Update vehicle mileage error (trip):", updateErr);
+          error("Update vehicle mileage error (trip):", updateErr);
           window.alert(
             "Trip saved but failed to update vehicle mileage. Check console for details.",
           );
@@ -1034,19 +1097,14 @@ if (user) {
           setTimeout(() => window.location.reload(), 700);
         }
       } catch (err) {
-        console.error("Unexpected error saving trip:", err);
+        error("Unexpected error saving trip:", err);
         window.alert("An unexpected error occurred. See console for details.");
       }
     });
-}
 
-// small helper used in template
-function escapeHtml(value) {
-  return String(value ?? "").replace(
-    /[&<>'"]/g,
-    (c) =>
-      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[
-        c
-      ],
-  );
+  // ---------- Finalize ----------
+  await requestServiceNotifications();
+  vehicleList.forEach(notifyServiceDue);
+
+  log("trip.js initialized");
 }
