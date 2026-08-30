@@ -41,7 +41,6 @@ if (user) {
               : null,
           };
         } catch (err) {
-          // If no logbook entry or error, fallback to null
           return { ...row, latest_logbook_mileage: null };
         }
       }),
@@ -162,14 +161,12 @@ if (user) {
     previousInput.value = "";
     if (!vehicleId) return;
 
-    // First try to read dataset value from the option (prefetched)
     const option = vehicleSelect.querySelector(`option[value="${vehicleId}"]`);
     if (option && option.dataset.currentMileage) {
       previousInput.value = option.dataset.currentMileage;
       return;
     }
 
-    // Fallback: query car_logbook for the latest refuel entry
     try {
       const { data: lastFill } = await supabase
         .from("car_logbook")
@@ -191,7 +188,6 @@ if (user) {
     await fetchLastFillMileage(vehicleSelect.value);
   });
 
-  // Initialize date and previous mileage
   dateInput.value = new Date().toISOString().slice(0, 10);
   if (vehicleSelect.value) await fetchLastFillMileage(vehicleSelect.value);
   updateCalculatedTotal();
@@ -221,7 +217,6 @@ if (user) {
     return { lPer100, kmPerL: Number(kmPerL.toFixed(3)) };
   };
 
-  // Manual input syncing
   consumptionManualInput?.addEventListener("input", () => {
     const val = parseFloat(consumptionManualInput.value);
     if (Number.isFinite(val) && val > 0) {
@@ -244,33 +239,20 @@ if (user) {
 
   // -------------------------
   // Location parsing + reverse geocoding improvements
-  // - Accept typed coordinates (lat, lon or lon, lat)
-  // - Auto-reverse-geocode when coordinates are entered
-  // - Robust geolocation detection with clear status messages
-  // - Keep UI hints for coordinate formats
   // -------------------------
-
-  // Parse coordinates from a free-text input.
-  // Returns [lon, lat] if parseable, otherwise null.
   function parseCoordinates(text) {
     if (!text || typeof text !== "string") return null;
     const trimmed = text.trim();
-    // Accept formats like "lat, lon" or "lon, lat" or "lat lon" or "lat;lon"
     const coordMatch = trimmed.match(/^(-?\d+(\.\d+)?)[,\s;]+(-?\d+(\.\d+)?)$/);
     if (!coordMatch) return null;
     const a = Number(coordMatch[1]);
     const b = Number(coordMatch[3]);
     if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
-    // Determine which is lat and which is lon:
-    // If a is in latitude range (-90..90) and b in longitude (-180..180), assume a=lat, b=lon -> return [lon, lat]
     if (a >= -90 && a <= 90 && b >= -180 && b <= 180) return [b, a];
-    // If b is in latitude range and a in longitude range, assume a=lon, b=lat -> return [a, b]
     if (b >= -90 && b <= 90 && a >= -180 && a <= 180) return [a, b];
-    // Otherwise ambiguous — return null
     return null;
   }
 
-  // Reverse geocode using Nominatim (OpenStreetMap)
   async function reverseGeocode(lat, lon) {
     try {
       const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&addressdetails=1`;
@@ -296,7 +278,6 @@ if (user) {
     }
   }
 
-  // Show status helper
   function showLocationStatus(message, isError = false) {
     if (!locationStatus) return;
     locationStatus.hidden = false;
@@ -307,8 +288,6 @@ if (user) {
     }, 6000);
   }
 
-  // When user types into the location input, detect coordinate-like input and auto-reverse-geocode.
-  // Debounce to avoid excessive requests.
   function debounce(fn, wait = 300) {
     let t;
     return (...args) => {
@@ -327,21 +306,18 @@ if (user) {
       return;
     }
 
-    // Show a small hint about accepted coordinate formats
     if (locationHint) {
       locationHint.style.display = "block";
       locationHint.textContent =
         'Tip: you can paste coordinates like "-26.2041, 28.0473" to auto-fill the address.';
     }
 
-    // If the user typed coordinates, parse and reverse-geocode them
     const coords = parseCoordinates(text);
     if (coords) {
       const [lon, lat] = coords;
       showLocationStatus("Resolving coordinates…");
       try {
         const address = await reverseGeocode(lat, lon);
-        // Only replace the input if reverse geocode returned a human-readable address
         if (address) {
           locationInput.value = address;
           if (locationHint) {
@@ -359,7 +335,6 @@ if (user) {
 
   locationInput.addEventListener("input", handleLocationInput);
 
-  // Geolocation detection: fill location input with reverse-geocoded address or coordinates fallback
   async function detectLocationAndFill() {
     if (!navigator.geolocation) {
       showLocationStatus("Geolocation not supported by this browser", true);
@@ -419,9 +394,7 @@ if (user) {
 
   detectBtn.addEventListener("click", detectLocationAndFill);
 
-  // -------------------------
-  // Submit handler: accept manual consumption or compute when possible
-  // -------------------------
+  // Submit handler
   document
     .querySelector("#log-form")
     .addEventListener("submit", async (event) => {
@@ -441,7 +414,6 @@ if (user) {
       const locationRaw = locationInput.value || null;
       const date = document.querySelector("#date").value;
 
-      // Manual consumption inputs (may be empty)
       const manualConsumptionRaw = consumptionManualInput.value
         ? parseFloat(consumptionManualInput.value)
         : null;
@@ -465,13 +437,11 @@ if (user) {
       if (!Number.isFinite(pricePerLitre) || pricePerLitre < 0)
         return window.alert("Please enter a valid price per litre.");
 
-      // distance since last fill (guard against missing last fill)
       const distanceSinceLastFill =
         Number.isFinite(mileageLastFill) && mileageLastFill !== null
           ? Math.max(0, currentMileage - Number(mileageLastFill))
           : null;
 
-      // Determine consumption/efficiency to store:
       let lPer100 = null;
       let kmPerL = null;
 
@@ -504,14 +474,12 @@ if (user) {
             const resolved = await reverseGeocode(lat, lon);
             if (resolved) locationToStore = resolved;
           } catch (err) {
-            // keep raw input if reverse fails
             console.warn("Failed to reverse geocode on submit:", err);
           }
         }
       }
 
       try {
-        // Insert into car_logbook: use fuel_price (not price_per_litre)
         const { data: insertData, error: insertErr } = await supabase
           .from("car_logbook")
           .insert({
@@ -539,7 +507,6 @@ if (user) {
           );
         }
 
-        // update vehicle current_mileage in vehicles table (keep this behavior)
         const { error: updateErr } = await supabase
           .from("vehicles")
           .update({
@@ -558,14 +525,12 @@ if (user) {
           const consumptionText = lPer100 === null ? "—" : `${lPer100} L/100km`;
           const efficiencyText = kmPerL === null ? "—" : `${kmPerL} km/L`;
           successEl.textContent = `Fill-up saved. Total: ${formatMoney(totalCost)}. Consumption: ${consumptionText} · ${efficiencyText}.`;
-          // reset form fields (keep vehicle selected)
           litersInput.value = "";
           priceInput.value = "";
           currentInput.value = "";
           consumptionManualInput.value = "";
           efficiencyManualInput.value = "";
           previousInput.value = currentMileage;
-          // update option dataset so next time it prepopulates
           const opt = vehicleSelect.querySelector(
             `option[value="${vehicleId}"]`,
           );
@@ -591,4 +556,3 @@ function escapeHtml(value) {
       ],
   );
 }
-

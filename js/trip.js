@@ -1,4 +1,4 @@
-// trip.js
+// trips.js
 import "./app.js";
 import {
   notifyServiceDue,
@@ -30,7 +30,7 @@ if (user) {
     `<header class="topbar"><div><div class="eyebrow">Logbook / new trip</div><h1>Record a trip.</h1></div><div class="top-date"><strong>TRIP ENTRY</strong>Odometer-led</div></header>
     ${vehicleList.map(serviceReminderMarkup).join("")}
     <div class="card" style="max-width:760px">
-      <div class="notice">Trip distance is calculated from the start and end odometer readings or from the selected start/end locations. Pick a suggestion or open the map to choose a precise point.</div>
+      <div class="notice">Trip distance is calculated from the start and end odometer readings or from the selected start/end locations. Pick a suggestion, choose a previous destination, or open the map to choose a precise point.</div>
       <form id="trip-form" class="form-grid">
         <div class="field full">
           <label for="vehicle">Vehicle</label>
@@ -83,6 +83,7 @@ if (user) {
           <div style="position:relative">
             <input id="destination" type="text" maxlength="200" placeholder="End location (select from suggestions or Detect / open map)" autocomplete="off" required>
             <div id="destination-suggestions" class="suggestions" style="position:absolute;left:0;right:0;z-index:40;background:#fff;border:1px solid #ddd;display:none;max-height:260px;overflow:auto;"></div>
+
             <div style="margin-top:6px;display:flex;gap:8px;align-items:center">
               <button id="detect-destination" type="button" class="btn btn-secondary" style="padding:6px 10px">Detect</button>
               <button id="open-destination-map" type="button" class="btn btn-secondary" style="padding:6px 10px">Open map</button>
@@ -196,14 +197,9 @@ if (user) {
   let destWasDetectedByGeolocation = false;
 
   // -------------------------
-  // Mapbox token (client)
+  // Mapbox token (client) from Vite env
   // -------------------------
-  const MAPBOX_TOKEN =
-    "pk.eyJ1IjoicnVhbmhhdDA2IiwiYSI6ImNtdGZ4Y3pmYTFmZTYyeHNlZzM0a2wycjAifQ.8Sg2NivUAa2cJ8fNFPPn1Q";
-
-  // OpenRouteService API key (used for routing/directions)
-  const ORS_API_KEY =
-    "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjE0MjY4MzJlNjExNTQxZjY5NjVhZDU1ZGNjOTc0YWY0IiwiaCI6Im11cm11cjY0In0=";
+  const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN || "";
 
   // Debounce helper
   function debounce(fn, wait = 300) {
@@ -279,7 +275,6 @@ if (user) {
 
   // call once on load if a vehicle is preselected
   if (vehicleSelect.value) {
-    // run in next tick to ensure DOM is stable
     setTimeout(async () => {
       await populateStartOdometer(vehicleSelect.value);
     }, 0);
@@ -296,7 +291,6 @@ if (user) {
     if (!isOther) purposeOtherInput.value = "";
   }
 
-  // Ensure handler is bound and initial state is correct
   if (purposeSelect) {
     purposeSelect.removeEventListener("change", updatePurposeOtherVisibility);
     purposeSelect.addEventListener("change", updatePurposeOtherVisibility);
@@ -345,7 +339,6 @@ if (user) {
     }
   }
 
-  // Render suggestions list into container; on select, set input value and coords
   function renderSuggestions(
     container,
     items,
@@ -396,9 +389,8 @@ if (user) {
     container.style.zIndex = 9999;
   }
 
-  // Wire autocomplete for origin and destination (Mapbox)
   const originSearch = debounce(async (q) => {
-    originCoords = null; // reset until user selects
+    originCoords = null;
     if (!q || q.trim().length < 1) {
       originSuggestions.style.display = "none";
       return;
@@ -416,7 +408,7 @@ if (user) {
   }, 250);
 
   const destSearch = debounce(async (q) => {
-    destCoords = null; // reset until user selects
+    destCoords = null;
     destWasDetectedByGeolocation = false;
     if (!q || q.trim().length < 1) {
       destinationSuggestions.style.display = "none";
@@ -437,7 +429,6 @@ if (user) {
   originInput.addEventListener("input", (e) => originSearch(e.target.value));
   destinationInput.addEventListener("input", (e) => destSearch(e.target.value));
 
-  // If user types an address but doesn't select a suggestion, attempt auto-calc on blur or after a short pause
   originInput.addEventListener("blur", () => {
     setTimeout(() => tryAutoCalculateIfReady(), 250);
   });
@@ -445,14 +436,12 @@ if (user) {
     setTimeout(() => tryAutoCalculateIfReady(), 250);
   });
 
-  // Also attempt auto-calc when user stops typing in destination (debounced)
   const destinationTypingStopped = debounce(
     () => tryAutoCalculateIfReady(),
     800,
   );
   destinationInput.addEventListener("keyup", () => destinationTypingStopped());
 
-  // Close suggestions when clicking outside
   document.addEventListener("click", (e) => {
     if (!originSuggestions.contains(e.target) && e.target !== originInput)
       originSuggestions.style.display = "none";
@@ -463,7 +452,6 @@ if (user) {
       destinationSuggestions.style.display = "none";
   });
 
-  // If user focuses input and there is text, trigger search to show suggestions
   originInput.addEventListener("focus", () => {
     if (originInput.value) originSearch(originInput.value);
   });
@@ -471,9 +459,7 @@ if (user) {
     if (destinationInput.value) destSearch(destinationInput.value);
   });
 
-  // -------------------------
-  // Reverse geocode helper (Mapbox reverse) used for detect destination and map reverse geocode
-  // -------------------------
+  // Reverse geocode helper (Mapbox reverse)
   async function reverseGeocodeMapbox(lat, lon) {
     try {
       const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(lon)},${encodeURIComponent(lat)}.json?access_token=${encodeURIComponent(MAPBOX_TOKEN)}&limit=1`;
@@ -492,7 +478,6 @@ if (user) {
     }
   }
 
-  // show status helper
   function showLocationStatus(message, isError = false) {
     if (!locationStatus) return;
     locationStatus.hidden = false;
@@ -503,9 +488,6 @@ if (user) {
     }, 6000);
   }
 
-  // -------------------------
-  // Detect destination (geolocation) — fills destination input with reverse geocoded address and stores coords
-  // -------------------------
   async function detectDestination() {
     if (!navigator.geolocation) {
       showLocationStatus("Geolocation not supported by this browser", true);
@@ -520,7 +502,6 @@ if (user) {
           const lon = pos.coords.longitude;
           const address = await reverseGeocodeMapbox(lat, lon);
           destinationInput.value = address;
-          // store coords in [lon, lat] format
           destCoords = [Number(lon), Number(lat)];
           destWasDetectedByGeolocation = true;
           showSmallMapPreview(destMapPreview, destCoords);
@@ -564,39 +545,24 @@ if (user) {
 
   detectDestBtn?.addEventListener("click", detectDestination);
 
-  // -------------------------
-  // Directions (ORS) — ensure coords are [lon, lat]
-  // -------------------------
+  // Directions: call server proxy /api/ors/directions (server injects ORS_API_KEY)
   async function calculateDrivingDistanceKm(originCoordsArr, destCoordsArr) {
     try {
       if (!originCoordsArr || !destCoordsArr)
         throw new Error("Missing coordinates");
-      // ORS expects coordinates as [lon, lat]
-      const url = `https://api.openrouteservice.org/v2/directions/driving-car`;
-      const body = { coordinates: [originCoordsArr, destCoordsArr] };
-      const resp = await fetch(
-        url + `?api_key=${encodeURIComponent(ORS_API_KEY)}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        },
-      );
+      // Call server proxy which should forward to OpenRouteService using server-side ORS_API_KEY
+      const resp = await fetch("/api/ors/directions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ coordinates: [originCoordsArr, destCoordsArr] }),
+      });
       if (!resp.ok) {
         const text = await resp.text().catch(() => "");
         throw new Error("Directions request failed: " + text);
       }
       const data = await resp.json();
-      if (
-        data &&
-        data.routes &&
-        data.routes.length > 0 &&
-        data.routes[0].summary &&
-        typeof data.routes[0].summary.distance === "number"
-      ) {
-        const meters = data.routes[0].summary.distance;
-        return meters / 1000; // km
-      }
+      const meters = data?.routes?.[0]?.summary?.distance;
+      if (typeof meters === "number") return meters / 1000;
       throw new Error("No route found");
     } catch (err) {
       console.error("Directions error:", err);
@@ -607,7 +573,6 @@ if (user) {
   // Helper to geocode a single address to coords if user didn't pick from suggestions
   async function geocodeSingle(address) {
     if (!address) return null;
-    // If the user typed coordinates directly like "lat,lon" or "lon,lat", try to parse first
     const coordMatch = address
       .trim()
       .match(/^(-?\d+(\.\d+)?)[,\s]+(-?\d+(\.\d+)?)$/);
@@ -619,16 +584,11 @@ if (user) {
       }
       return [a, b];
     }
-
-    // Try Mapbox forward geocoding
     const results = await searchPlacesMapbox(address, 6);
     if (results && results.length > 0) return results[0].coords;
     return null;
   }
 
-  // -------------------------
-  // Try automatic calculation when both coordinates are available or when destination was detected by geolocation
-  // -------------------------
   async function tryAutoCalculateIfReady() {
     const originText = originInput.value.trim();
     const destinationText = destinationInput.value.trim();
@@ -729,9 +689,7 @@ if (user) {
     }
   }
 
-  // -------------------------
   // Mapbox GL JS lazy loader and small preview
-  // -------------------------
   let mapboxLoaded = false;
   let mapboxLoading = false;
   async function ensureMapboxGL() {
@@ -768,7 +726,6 @@ if (user) {
     mapboxLoading = false;
   }
 
-  // create a small static map preview inside a container element using Mapbox GL
   async function showSmallMapPreview(containerEl, coords) {
     if (!containerEl) return;
     containerEl.style.display = "block";
@@ -795,9 +752,7 @@ if (user) {
     }
   }
 
-  // -------------------------
-  // Map modal logic: open modal, initialize Mapbox map, allow selecting a point or searching on map
-  // -------------------------
+  // Map modal logic (same as before)
   let modalMap = null;
   let modalMarker = null;
   let modalCurrentCoords = null;
@@ -922,11 +877,9 @@ if (user) {
 
     function closeMapModal() {
       mapModalBackdrop.style.display = "none";
-      // keep modalMap instance for reuse
     }
   }
 
-  // open origin map button
   openOriginMapBtn?.addEventListener("click", async () => {
     const initial = originCoords ? [originCoords[0], originCoords[1]] : null;
     await openMapModal(initial, ({ coords, label }) => {
@@ -937,21 +890,18 @@ if (user) {
     });
   });
 
-  // open destination map button
   openDestMapBtn?.addEventListener("click", async () => {
     const initial = destCoords ? [destCoords[0], destCoords[1]] : null;
     await openMapModal(initial, ({ coords, label }) => {
       destCoords = coords;
       destinationInput.value = label || destinationInput.value;
       showSmallMapPreview(destMapPreview, coords);
-      destWasDetectedByGeolocation = true; // treat as detected so auto-calc triggers
+      destWasDetectedByGeolocation = true;
       tryAutoCalculateIfReady();
     });
   });
 
-  // -------------------------
-  // New: Use last trip end as start location (ONLY use last trip's destination for origin)
-  // -------------------------
+  // Use last trip end as origin (only destination -> origin)
   async function fetchLastTripForVehicle(vehicleId) {
     if (!vehicleId) return null;
     try {
@@ -974,10 +924,6 @@ if (user) {
     }
   }
 
-  // When user clicks the "Use last trip end" button:
-  // - populate origin input with last trip's trip_destination only
-  // - attempt to geocode that destination to coords and show preview
-  // - do NOT modify the start odometer or any other fields
   useLastEndBtn?.addEventListener("click", async () => {
     const vehicleId = vehicleSelect.value;
     if (!vehicleId) return window.alert("Please select a vehicle first.");
@@ -989,10 +935,8 @@ if (user) {
         return;
       }
 
-      // Only populate origin with the last trip's destination (do not touch odometer)
       if (lastTrip.trip_destination) {
         originInput.value = lastTrip.trip_destination;
-        // Try to geocode the label to coords using Mapbox; if it fails, leave originCoords null
         const coords = await geocodeSingle(lastTrip.trip_destination);
         if (coords) {
           originCoords = coords;
@@ -1012,9 +956,7 @@ if (user) {
     }
   });
 
-  // -------------------------
-  // Submit handler (keeps existing logic)
-  // -------------------------
+  // Submit handler
   document
     .querySelector("#trip-form")
     .addEventListener("submit", async (event) => {
@@ -1108,4 +1050,3 @@ function escapeHtml(value) {
       ],
   );
 }
-
