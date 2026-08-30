@@ -1,10 +1,13 @@
 // trips.js
-// Full updated trip UI with Mapbox + ORS proxy integration and improved light/dark map UI.
+// Full updated trip UI with Mapbox + ORS proxy integration, improved light/dark map UI,
+// and mobile-first responsive behavior so the map works well on smaller screens.
+//
 // Assumptions:
 // - Server-side ORS proxy available at /api/ors/directions (server reads ORS_API_KEY).
 // - Runtime env script may expose window.__ENV.VITE_MAPBOX_TOKEN for static servers.
 // - When using Vite, import.meta.env.VITE_MAPBOX_TOKEN will be available in dev/build.
-// - This file expects `shell`, `supabase`, `requireAuth`, `requestServiceNotifications`, `notifyServiceDue`, and `serviceReminderMarkup` to exist.
+// - This file expects `shell`, `supabase`, `requireAuth`, `requestServiceNotifications`,
+//   `notifyServiceDue`, and `serviceReminderMarkup` to exist in the app environment.
 
 import "./app.js";
 import {
@@ -63,6 +66,12 @@ if (user) {
           "'": "&#39;",
           '"': "&quot;",
         })[c],
+    );
+  }
+
+  function isMobileViewport() {
+    return (
+      window.innerWidth <= 720 || window.matchMedia("(max-width:720px)").matches
     );
   }
 
@@ -205,6 +214,7 @@ if (user) {
           <button id="map-search-btn" class="btn btn-secondary" style="padding:6px 10px">Search</button>
           <div style="display:flex;gap:8px;align-items:center">
             <button id="map-theme-toggle" class="btn btn-secondary" type="button" title="Toggle map theme" style="padding:6px 10px;border-radius:8px">☀️ Light</button>
+            <button id="map-results-toggle" class="btn btn-secondary" type="button" title="Toggle results" style="padding:6px 10px;border-radius:8px;display:none">Results</button>
             <button id="map-modal-center" class="btn btn-secondary" style="margin-left:8px">Center here</button>
             <button id="map-modal-close" class="btn btn-primary" style="margin-left:8px">Done</button>
           </div>
@@ -250,6 +260,7 @@ if (user) {
 
   // Map modal refs
   const mapModalBackdrop = document.querySelector("#map-modal-backdrop");
+  const mapModal = document.querySelector("#map-modal");
   const mapContainer = document.querySelector("#map-container");
   const mapModalClose = document.querySelector("#map-modal-close");
   const mapSelectConfirm = document.querySelector("#map-select-confirm");
@@ -258,7 +269,9 @@ if (user) {
   const mapSearchInput = document.querySelector("#map-search");
   const mapSearchBtn = document.querySelector("#map-search-btn");
   const mapResultsList = document.querySelector("#map-results-list");
+  const mapSearchResultsPanel = document.querySelector("#map-search-results");
   const mapThemeToggleBtn = document.querySelector("#map-theme-toggle");
+  const mapResultsToggleBtn = document.querySelector("#map-results-toggle");
 
   dateInput.value = new Date().toISOString().slice(0, 10);
 
@@ -665,7 +678,7 @@ if (user) {
     }
   }
 
-  // ---------- Mapbox GL loader and modal with theme toggle ----------
+  // ---------- Mapbox GL loader and modal with theme toggle and mobile behavior ----------
   let mapboxLoaded = false;
   let mapboxLoading = false;
   let modalMap = null;
@@ -749,10 +762,8 @@ if (user) {
     localStorage.setItem("mapTheme", theme);
     if (theme === "dark") document.documentElement.classList.add("dark");
     else document.documentElement.classList.remove("dark");
-    // update toggle label if present
-    if (mapThemeToggleBtn) {
+    if (mapThemeToggleBtn)
       mapThemeToggleBtn.textContent = theme === "dark" ? "🌙 Dark" : "☀️ Light";
-    }
   }
   function applyMapStyleToMap(mapInstance, theme) {
     if (!mapInstance) return;
@@ -767,10 +778,39 @@ if (user) {
     }
   }
 
+  // Mobile-specific helpers
+  function enterMobileModalLayout() {
+    if (!mapModal) return;
+    // full-screen modal
+    mapModal.style.width = "100%";
+    mapModal.style.maxWidth = "100%";
+    mapModal.style.height = "100%";
+    mapModal.style.borderRadius = "0";
+    mapModalBackdrop.style.padding = "0";
+    // hide results panel by default on mobile
+    if (mapSearchResultsPanel) mapSearchResultsPanel.style.display = "none";
+    if (mapResultsToggleBtn) mapResultsToggleBtn.style.display = "inline-flex";
+  }
+  function exitMobileModalLayout() {
+    if (!mapModal) return;
+    mapModal.style.width = "92%";
+    mapModal.style.maxWidth = "1100px";
+    mapModal.style.height = "82%";
+    mapModal.style.borderRadius = "12px";
+    mapModalBackdrop.style.padding = "20px";
+    if (mapSearchResultsPanel) mapSearchResultsPanel.style.display = "";
+    if (mapResultsToggleBtn) mapResultsToggleBtn.style.display = "none";
+  }
+
   async function openMapModal(initialCoords = null, onConfirm) {
     try {
       // show modal first so container has layout
       mapModalBackdrop.style.display = "flex";
+
+      // apply mobile layout if needed
+      const mobile = isMobileViewport();
+      if (mobile) enterMobileModalLayout();
+      else exitMobileModalLayout();
 
       await ensureMapboxGL();
       mapboxgl.accessToken = MAPBOX_TOKEN;
@@ -794,6 +834,20 @@ if (user) {
           const lat = e.lngLat.lat;
           setModalMarker([lng, lat]);
         });
+
+        // ensure map resizes on orientation change and resize
+        window.addEventListener("orientationchange", () => {
+          setTimeout(() => modalMap && modalMap.resize(), 300);
+        });
+        window.addEventListener(
+          "resize",
+          debounce(() => {
+            modalMap && modalMap.resize();
+            // if viewport crosses mobile threshold, toggle layout
+            if (isMobileViewport()) enterMobileModalLayout();
+            else exitMobileModalLayout();
+          }, 200),
+        );
       } else {
         // switch style to match theme
         applyMapStyleToMap(modalMap, getPreferredTheme());
@@ -819,6 +873,9 @@ if (user) {
             const first = results[0];
             modalMap.setCenter([first.coords[0], first.coords[1]]);
             modalMap.setZoom(14);
+            // on mobile, show results panel if hidden
+            if (isMobileViewport() && mapSearchResultsPanel)
+              mapSearchResultsPanel.style.display = "block";
           }
         } catch (err) {
           mapResultsList.innerHTML = `<div style="padding:8px;color:#a00">Search failed</div>`;
@@ -887,6 +944,9 @@ if (user) {
           if (r.secondary) row.appendChild(sub);
           row.addEventListener("click", () => {
             setModalMarker(r.coords);
+            // on mobile, keep results visible so user can confirm
+            if (isMobileViewport() && mapSearchResultsPanel)
+              mapSearchResultsPanel.style.display = "block";
           });
           mapResultsList.appendChild(row);
         });
@@ -894,6 +954,8 @@ if (user) {
 
       function closeMapModal() {
         mapModalBackdrop.style.display = "none";
+        // restore desktop layout when closing
+        exitMobileModalLayout();
       }
 
       // ensure theme toggle wiring
@@ -904,6 +966,20 @@ if (user) {
           const next = getPreferredTheme() === "dark" ? "light" : "dark";
           setPreferredTheme(next);
           applyMapStyleToMap(modalMap, next);
+        };
+      }
+
+      // results toggle for mobile
+      if (mapResultsToggleBtn) {
+        mapResultsToggleBtn.style.display = isMobileViewport()
+          ? "inline-flex"
+          : "none";
+        mapResultsToggleBtn.onclick = () => {
+          if (!mapSearchResultsPanel) return;
+          mapSearchResultsPanel.style.display =
+            mapSearchResultsPanel.style.display === "block" ? "none" : "block";
+          // ensure map resizes when panel toggles
+          setTimeout(() => modalMap && modalMap.resize(), 120);
         };
       }
 
@@ -919,6 +995,15 @@ if (user) {
             applyMapStyleToMap(modalMap, sys);
           });
       }
+
+      // ensure map is visible and sized after opening
+      setTimeout(() => {
+        try {
+          modalMap && modalMap.resize();
+        } catch (e) {
+          /* ignore */
+        }
+      }, 120);
     } catch (err) {
       mapModalBackdrop.style.display = "none";
       error("openMapModal error", err);
@@ -1106,5 +1191,5 @@ if (user) {
   await requestServiceNotifications();
   vehicleList.forEach(notifyServiceDue);
 
-  log("trip.js initialized");
+  log("trip.js initialized with responsive map support");
 }
