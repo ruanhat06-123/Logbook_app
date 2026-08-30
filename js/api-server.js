@@ -1,54 +1,51 @@
 // api-server.js
-import express from "express";
-import fetch from "node-fetch";
-import dotenv from "dotenv";
-import path from "path";
-import cors from "cors";
-
-dotenv.config();
-
+// Minimal Express proxy for OpenRouteService directions
+require("dotenv").config();
+const express = require("express");
+const fetch = require("node-fetch"); // npm i node-fetch@2
 const app = express();
-const PORT = process.env.PORT || 3000;
-const ORS_API_KEY = process.env.ORS_API_KEY || "";
-const MAPBOX_TOKEN = process.env.VITE_MAPBOX_TOKEN || "";
+app.use(express.json());
 
-app.use(cors());
-app.use(express.json({ limit: "1mb" }));
+const ORS_KEY = process.env.ORS_API_KEY;
+if (!ORS_KEY) {
+  console.error("ORS_API_KEY missing in .env");
+  process.exit(1);
+}
 
-// Serve env.js so client can read runtime token when using static server
-app.get("/env.js", (req, res) => {
-  res.setHeader("Content-Type", "application/javascript");
-  // Only expose the public Mapbox token
-  res.send(`window.__ENV = { VITE_MAPBOX_TOKEN: ${JSON.stringify(MAPBOX_TOKEN)} };`);
-});
-
-// ORS proxy endpoint (server-side secret)
 app.post("/api/ors/directions", async (req, res) => {
-  if (!ORS_API_KEY) return res.status(500).json({ error: "Server missing ORS_API_KEY" });
   try {
-    const r = await fetch("https://api.openrouteservice.org/v2/directions/driving-car?api_key=" + encodeURIComponent(ORS_API_KEY), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(req.body),
-    });
-    const data = await r.json();
-    res.status(r.status).json(data);
+    const { coordinates } = req.body; // expect [[lon,lat],[lon,lat]]
+    if (!Array.isArray(coordinates) || coordinates.length !== 2) {
+      return res.status(400).json({ error: "Invalid coordinates" });
+    }
+
+    const body = {
+      coordinates,
+      format: "json",
+      units: "m",
+    };
+
+    const resp = await fetch(
+      "https://api.openrouteservice.org/v2/directions/driving-car/geojson",
+      {
+        method: "POST",
+        headers: {
+          Authorization: ORS_KEY,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      },
+    );
+
+    const data = await resp.json();
+    return res.status(resp.status).json(data);
   } catch (err) {
-    console.error("ORS proxy error:", err);
-    res.status(502).json({ error: "ORS proxy failed" });
+    console.error("ORS proxy error", err);
+    return res.status(500).json({ error: "Proxy error" });
   }
 });
 
-// Serve static files (adjust folder as needed)
-const staticDir = path.join(process.cwd(), "public"); // put your index.html and assets in public/
-app.use(express.static(staticDir));
-
-// Fallback to index.html for SPA routes
-app.get("*", (req, res) => {
-  res.sendFile(path.join(staticDir, "index.html"));
-});
-
-app.listen(PORT, () => {
-  console.log(`Dev server running at http://localhost:${PORT}`);
-  console.log(`env.js available at http://localhost:${PORT}/env.js`);
-});
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () =>
+  console.log(`API proxy listening on http://localhost:${PORT}`),
+);

@@ -1,13 +1,14 @@
-// trips.js
-// Full updated trip UI with Mapbox + ORS proxy integration, improved light/dark map UI,
-// and mobile-first responsive behavior so the map works well on smaller screens.
+// trip.js
+// Complete, self-contained trip UI with Mapbox + ORS proxy integration.
+// Features:
+// - Runtime-safe Mapbox token handling (window.__ENV or import.meta.env)
+// - ORS routing via server proxy at /api/ors/directions
+// - Robust modal creation if missing, light/dark theme toggle
+// - Responsive mobile-first modal and visible buttons on small screens
+// - Defensive guards and helpful console logs for debugging
 //
-// Assumptions:
-// - Server-side ORS proxy available at /api/ors/directions (server reads ORS_API_KEY).
-// - Runtime env script may expose window.__ENV.VITE_MAPBOX_TOKEN for static servers.
-// - When using Vite, import.meta.env.VITE_MAPBOX_TOKEN will be available in dev/build.
-// - This file expects `shell`, `supabase`, `requireAuth`, `requestServiceNotifications`,
-//   `notifyServiceDue`, and `serviceReminderMarkup` to exist in the app environment.
+// Prereqs (expected to exist in your app environment):
+// - shell, supabase, requireAuth, requestServiceNotifications, notifyServiceDue, serviceReminderMarkup
 
 import "./app.js";
 import {
@@ -46,7 +47,7 @@ if (user) {
   const DARK_STYLE = () =>
     `https://api.mapbox.com/styles/v1/mapbox/dark-v10?access_token=${encodeURIComponent(MAPBOX_TOKEN)}`;
 
-  // ---------- Small utilities ----------
+  // ---------- Utilities ----------
   function debounce(fn, wait = 300) {
     let t;
     return (...args) => {
@@ -93,10 +94,75 @@ if (user) {
     vehicleList = [];
   }
 
-  // Render full UI (includes map modal)
+  // Render UI (includes responsive CSS and modal markup)
   await shell(
     "trip",
     `
+    <style>
+      :root {
+        --card-bg: #ffffff;
+        --panel-bg: #fafafa;
+        --map-bg: #e9eef5;
+        --text-color: #111827;
+        --muted: #6b7280;
+        --btn-bg: #ffffff;
+        --btn-text: #111827;
+        --focus: #2563eb;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --card-bg: #0b1220;
+          --panel-bg: #07101a;
+          --map-bg: #07101a;
+          --text-color: #e6eef8;
+          --muted: #9aa6b2;
+          --btn-bg: #0f1724;
+          --btn-text: #e6eef8;
+          --focus: #60a5fa;
+        }
+      }
+
+      /* Modal */
+      #map-modal-backdrop { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:2000; align-items:center; justify-content:center; padding:20px; }
+      #map-modal { width:92%; max-width:1100px; height:82%; background:var(--card-bg); color:var(--text-color); border-radius:12px; overflow:hidden; display:flex; flex-direction:column; box-shadow:0 12px 30px rgba(0,0,0,0.25); border:1px solid rgba(0,0,0,0.06); }
+
+      .modal-header { display:flex; gap:8px; align-items:center; padding:10px 14px; border-bottom:1px solid rgba(0,0,0,0.06); background:linear-gradient(180deg, rgba(255,255,255,0.02), transparent); flex-wrap:wrap; }
+      .modal-title { font-weight:700; margin-right:8px; white-space:nowrap; }
+
+      #map-search { flex:1; min-width:160px; padding:8px; border-radius:8px; border:1px solid #ddd; }
+      #map-search-btn, #map-theme-toggle, #map-results-toggle, #map-modal-center, #map-modal-close { padding:8px 12px; border-radius:8px; min-height:40px; display:inline-flex; align-items:center; justify-content:center; font-size:14px; }
+      #map-theme-toggle, #map-results-toggle { white-space:nowrap; }
+
+      #map-container { flex:1; min-height:0; background:var(--map-bg); }
+      #map-search-results { width:320px; border-left:1px solid rgba(0,0,0,0.06); overflow:auto; background:var(--panel-bg); padding:10px; display:flex; flex-direction:column; }
+      #map-results-list > div { padding:10px; border-bottom:1px solid rgba(0,0,0,0.04); cursor:pointer; }
+      #map-results-list > div:hover { background: rgba(0,0,0,0.02); }
+
+      #map-selected-label { color:var(--muted); font-size:14px; }
+      #map-select-confirm { margin-left:8px; padding:8px 12px; min-height:40px; }
+
+      @media (max-width:720px) {
+        #map-modal { width:100%; max-width:100%; height:100%; border-radius:0; padding:0; }
+        .modal-header { padding:10px; gap:6px; }
+        #map-search { width:100%; order:2; margin-top:6px; }
+        #map-search-btn { order:3; }
+        #map-theme-toggle { order:1; }
+        #map-results-toggle { display:inline-flex; order:4; }
+        #map-modal-center { order:5; }
+        #map-modal-close { order:6; }
+        #map-search-results { display:none; position:absolute; right:0; top:56px; bottom:56px; width:80%; max-width:360px; z-index:2100; box-shadow: -6px 0 18px rgba(0,0,0,0.2); }
+        #map-container { flex:1; }
+        #map-selected-label { font-size:13px; }
+        .btn { min-height:44px; padding:10px 14px; font-size:15px; }
+      }
+
+      button:focus, input:focus { outline: 2px solid var(--focus); outline-offset:2px; }
+      .suggestions { max-height:260px; overflow:auto; -webkit-overflow-scrolling:touch; }
+      .suggestion-item { padding:10px; cursor:pointer; }
+      .suggestion-item:hover { background:#f3f4f6; }
+      #origin-map-preview, #destination-map-preview { display:block; }
+    </style>
+
     <header class="topbar">
       <div>
         <div class="eyebrow">Logbook / new trip</div>
@@ -141,9 +207,9 @@ if (user) {
 
         <div class="field">
           <label for="start-odo">Start odometer (km)</label>
-          <div style="display:flex;gap:8px;align-items:center">
-            <input id="start-odo" type="number" min="0" step="1" required placeholder="Auto-populated from vehicle" style="flex:1">
-            <button id="use-last-end-btn" type="button" class="btn btn-secondary" title="Use end location from last trip as origin">Use last trip end</button>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <input id="start-odo" type="number" min="0" step="1" required placeholder="Auto-populated from vehicle" style="flex:1;min-width:120px">
+            <button id="use-last-end-btn" type="button" class="btn btn-secondary" title="Use end location from last trip as origin" aria-label="Use last trip end">Use last trip end</button>
           </div>
         </div>
 
@@ -157,8 +223,8 @@ if (user) {
           <div style="position:relative">
             <input id="origin" type="text" maxlength="200" placeholder="Start location (select from suggestions or open map)" autocomplete="off" required>
             <div id="origin-suggestions" class="suggestions" style="position:absolute;left:0;right:0;z-index:40;background:#fff;border:1px solid #ddd;display:none;max-height:260px;overflow:auto;"></div>
-            <div style="margin-top:6px;display:flex;gap:8px;align-items:center">
-              <button id="open-origin-map" type="button" class="btn btn-secondary" style="padding:6px 10px">Open map</button>
+            <div style="margin-top:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              <button id="open-origin-map" type="button" class="btn btn-secondary" style="padding:8px 12px" aria-label="Open origin map">Open map</button>
               <div id="origin-map-preview" style="width:120px;height:80px;border:1px solid #eee;display:none"></div>
             </div>
           </div>
@@ -169,9 +235,9 @@ if (user) {
           <div style="position:relative">
             <input id="destination" type="text" maxlength="200" placeholder="End location (select from suggestions or Detect / open map)" autocomplete="off" required>
             <div id="destination-suggestions" class="suggestions" style="position:absolute;left:0;right:0;z-index:40;background:#fff;border:1px solid #ddd;display:none;max-height:260px;overflow:auto;"></div>
-            <div style="margin-top:6px;display:flex;gap:8px;align-items:center">
-              <button id="detect-destination" type="button" class="btn btn-secondary" style="padding:6px 10px">Detect</button>
-              <button id="open-destination-map" type="button" class="btn btn-secondary" style="padding:6px 10px">Open map</button>
+            <div style="margin-top:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              <button id="detect-destination" type="button" class="btn btn-secondary" style="padding:8px 12px" aria-label="Detect destination">Detect</button>
+              <button id="open-destination-map" type="button" class="btn btn-secondary" style="padding:8px 12px" aria-label="Open destination map">Open map</button>
               <div id="destination-map-preview" style="width:120px;height:80px;border:1px solid #eee;display:none"></div>
             </div>
           </div>
@@ -196,41 +262,13 @@ if (user) {
           <input id="purpose-other" type="text" maxlength="200" placeholder="Describe the purpose" />
         </div>
 
-        <div class="form-actions field full">
-          <a href="vehicles.html" class="btn btn-secondary">Cancel</a>
-          <button class="btn btn-primary" type="submit">Save trip →</button>
+        <div class="form-actions field full" style="display:flex;gap:8px;flex-wrap:wrap">
+          <a href="vehicles.html" class="btn btn-secondary" style="flex:1;min-width:120px">Cancel</a>
+          <button class="btn btn-primary" type="submit" style="flex:1;min-width:120px">Save trip →</button>
         </div>
       </form>
 
       <div id="success" class="notice" hidden></div>
-    </div>
-
-    <!-- Map modal -->
-    <div id="map-modal-backdrop" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:2000;align-items:center;justify-content:center;padding:20px">
-      <div id="map-modal" role="dialog" aria-modal="true" style="width:92%;max-width:1100px;height:82%;background:var(--card-bg,#fff);color:var(--text-color,#111);border-radius:12px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 12px 30px rgba(0,0,0,0.25);border:1px solid rgba(0,0,0,0.06)">
-        <div class="modal-header" style="display:flex;gap:8px;align-items:center;padding:10px 14px;border-bottom:1px solid rgba(0,0,0,0.06);background:linear-gradient(180deg, rgba(255,255,255,0.02), transparent)">
-          <div class="modal-title" style="font-weight:700">Select location on map</div>
-          <input id="map-search" placeholder="Search places on map (e.g. Joburg Zoo or 123 Main St)" style="flex:1;padding:6px;border:1px solid #ddd;border-radius:6px" />
-          <button id="map-search-btn" class="btn btn-secondary" style="padding:6px 10px">Search</button>
-          <div style="display:flex;gap:8px;align-items:center">
-            <button id="map-theme-toggle" class="btn btn-secondary" type="button" title="Toggle map theme" style="padding:6px 10px;border-radius:8px">☀️ Light</button>
-            <button id="map-results-toggle" class="btn btn-secondary" type="button" title="Toggle results" style="padding:6px 10px;border-radius:8px;display:none">Results</button>
-            <button id="map-modal-center" class="btn btn-secondary" style="margin-left:8px">Center here</button>
-            <button id="map-modal-close" class="btn btn-primary" style="margin-left:8px">Done</button>
-          </div>
-        </div>
-        <div style="display:flex;flex:1;min-height:0">
-          <div id="map-container" style="flex:1;min-height:0;background:var(--map-bg,#e9eef5)"></div>
-          <div id="map-search-results" style="width:320px;border-left:1px solid rgba(0,0,0,0.06);overflow:auto;background:var(--panel-bg,#fafafa);padding:10px;display:flex;flex-direction:column">
-            <div style="font-weight:600;margin-bottom:8px">Search results</div>
-            <div id="map-results-list" style="flex:1;overflow:auto"></div>
-          </div>
-        </div>
-        <div style="padding:8px;border-top:1px solid rgba(0,0,0,0.06);display:flex;gap:8px;align-items:center">
-          <div id="map-selected-label" style="flex:1;color:var(--muted,#6b7280)">No point selected</div>
-          <button id="map-select-confirm" class="btn btn-primary">Use this point</button>
-        </div>
-      </div>
     </div>
   `,
   );
@@ -257,21 +295,6 @@ if (user) {
   const openDestMapBtn = document.querySelector("#open-destination-map");
   const originMapPreview = document.querySelector("#origin-map-preview");
   const destMapPreview = document.querySelector("#destination-map-preview");
-
-  // Map modal refs
-  const mapModalBackdrop = document.querySelector("#map-modal-backdrop");
-  const mapModal = document.querySelector("#map-modal");
-  const mapContainer = document.querySelector("#map-container");
-  const mapModalClose = document.querySelector("#map-modal-close");
-  const mapSelectConfirm = document.querySelector("#map-select-confirm");
-  const mapSelectedLabel = document.querySelector("#map-selected-label");
-  const mapModalCenterBtn = document.querySelector("#map-modal-center");
-  const mapSearchInput = document.querySelector("#map-search");
-  const mapSearchBtn = document.querySelector("#map-search-btn");
-  const mapResultsList = document.querySelector("#map-results-list");
-  const mapSearchResultsPanel = document.querySelector("#map-search-results");
-  const mapThemeToggleBtn = document.querySelector("#map-theme-toggle");
-  const mapResultsToggleBtn = document.querySelector("#map-results-toggle");
 
   dateInput.value = new Date().toISOString().slice(0, 10);
 
@@ -678,7 +701,7 @@ if (user) {
     }
   }
 
-  // ---------- Mapbox GL loader and modal with theme toggle and mobile behavior ----------
+  // ---------- Mapbox GL loader and modal helpers ----------
   let mapboxLoaded = false;
   let mapboxLoading = false;
   let modalMap = null;
@@ -749,7 +772,6 @@ if (user) {
     }
   }
 
-  // Theme helpers
   function getPreferredTheme() {
     const stored = localStorage.getItem("mapTheme");
     if (stored === "light" || stored === "dark") return stored;
@@ -762,8 +784,6 @@ if (user) {
     localStorage.setItem("mapTheme", theme);
     if (theme === "dark") document.documentElement.classList.add("dark");
     else document.documentElement.classList.remove("dark");
-    if (mapThemeToggleBtn)
-      mapThemeToggleBtn.textContent = theme === "dark" ? "🌙 Dark" : "☀️ Light";
   }
   function applyMapStyleToMap(mapInstance, theme) {
     if (!mapInstance) return;
@@ -778,135 +798,220 @@ if (user) {
     }
   }
 
-  // Mobile-specific helpers
-  function enterMobileModalLayout() {
-    if (!mapModal) return;
-    // full-screen modal
-    mapModal.style.width = "100%";
-    mapModal.style.maxWidth = "100%";
-    mapModal.style.height = "100%";
-    mapModal.style.borderRadius = "0";
-    mapModalBackdrop.style.padding = "0";
-    // hide results panel by default on mobile
-    if (mapSearchResultsPanel) mapSearchResultsPanel.style.display = "none";
-    if (mapResultsToggleBtn) mapResultsToggleBtn.style.display = "inline-flex";
+  // ---------- Modal creation and safe open ----------
+  function ensureMapModalMarkup() {
+    if (document.querySelector("#map-modal-backdrop")) return;
+    const html = `
+      <div id="map-modal-backdrop" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:2000;align-items:center;justify-content:center;padding:20px">
+        <div id="map-modal" role="dialog" aria-modal="true" style="width:92%;max-width:1100px;height:82%;background:var(--card-bg,#fff);color:var(--text-color,#111);border-radius:12px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 12px 30px rgba(0,0,0,0.25);border:1px solid rgba(0,0,0,0.06)">
+          <div class="modal-header" style="display:flex;gap:8px;align-items:center;padding:10px 14px;border-bottom:1px solid rgba(0,0,0,0.06);background:linear-gradient(180deg, rgba(255,255,255,0.02), transparent);flex-wrap:wrap">
+            <div class="modal-title" style="font-weight:700">Select location on map</div>
+            <input id="map-search" placeholder="Search places on map" style="flex:1;padding:6px;border:1px solid #ddd;border-radius:6px" />
+            <button id="map-search-btn" class="btn btn-secondary" style="padding:6px 10px">Search</button>
+            <div style="display:flex;gap:8px;align-items:center">
+              <button id="map-theme-toggle" class="btn btn-secondary" type="button" title="Toggle map theme" style="padding:6px 10px;border-radius:8px">☀️ Light</button>
+              <button id="map-results-toggle" class="btn btn-secondary" type="button" title="Toggle results" style="padding:6px 10px;border-radius:8px;display:none">Results</button>
+              <button id="map-modal-center" class="btn btn-secondary" style="margin-left:8px">Center here</button>
+              <button id="map-modal-close" class="btn btn-primary" style="margin-left:8px">Done</button>
+            </div>
+          </div>
+          <div style="display:flex;flex:1;min-height:0">
+            <div id="map-container" style="flex:1;min-height:0;background:var(--map-bg,#e9eef5)"></div>
+            <div id="map-search-results" style="width:320px;border-left:1px solid rgba(0,0,0,0.06);overflow:auto;background:var(--panel-bg,#fafafa);padding:10px;display:flex;flex-direction:column">
+              <div style="font-weight:600;margin-bottom:8px">Search results</div>
+              <div id="map-results-list" style="flex:1;overflow:auto"></div>
+            </div>
+          </div>
+          <div style="padding:8px;border-top:1px solid rgba(0,0,0,0.06);display:flex;gap:8px;align-items:center">
+            <div id="map-selected-label" style="flex:1;color:var(--muted,#6b7280)">No point selected</div>
+            <button id="map-select-confirm" class="btn btn-primary">Use this point</button>
+          </div>
+        </div>
+      </div>
+    `;
+    const wrapper = document.createElement("div");
+    wrapper.innerHTML = html;
+    document.body.appendChild(wrapper.firstElementChild);
   }
-  function exitMobileModalLayout() {
-    if (!mapModal) return;
-    mapModal.style.width = "92%";
-    mapModal.style.maxWidth = "1100px";
-    mapModal.style.height = "82%";
-    mapModal.style.borderRadius = "12px";
-    mapModalBackdrop.style.padding = "20px";
-    if (mapSearchResultsPanel) mapSearchResultsPanel.style.display = "";
-    if (mapResultsToggleBtn) mapResultsToggleBtn.style.display = "none";
+
+  function refreshModalRefs() {
+    return {
+      mapModalBackdrop: document.querySelector("#map-modal-backdrop"),
+      mapModal: document.querySelector("#map-modal"),
+      mapContainer: document.querySelector("#map-container"),
+      mapModalClose: document.querySelector("#map-modal-close"),
+      mapSelectConfirm: document.querySelector("#map-select-confirm"),
+      mapSelectedLabel: document.querySelector("#map-selected-label"),
+      mapModalCenterBtn: document.querySelector("#map-modal-center"),
+      mapSearchInput: document.querySelector("#map-search"),
+      mapSearchBtn: document.querySelector("#map-search-btn"),
+      mapResultsList: document.querySelector("#map-results-list"),
+      mapSearchResultsPanel: document.querySelector("#map-search-results"),
+      mapThemeToggleBtn: document.querySelector("#map-theme-toggle"),
+      mapResultsToggleBtn: document.querySelector("#map-results-toggle"),
+    };
   }
 
   async function openMapModal(initialCoords = null, onConfirm) {
     try {
-      // show modal first so container has layout
-      mapModalBackdrop.style.display = "flex";
+      ensureMapModalMarkup();
+      const refs = refreshModalRefs();
 
-      // apply mobile layout if needed
+      if (!refs.mapModalBackdrop || !refs.mapContainer) {
+        throw new Error("Map modal DOM not available after injection");
+      }
+
+      refs.mapModalBackdrop.style.display = "flex";
+
       const mobile = isMobileViewport();
-      if (mobile) enterMobileModalLayout();
-      else exitMobileModalLayout();
+      if (mobile) {
+        refs.mapModal.style.width = "100%";
+        refs.mapModal.style.maxWidth = "100%";
+        refs.mapModal.style.height = "100%";
+        refs.mapModal.style.borderRadius = "0";
+        refs.mapModalBackdrop.style.padding = "0";
+        if (refs.mapSearchResultsPanel)
+          refs.mapSearchResultsPanel.style.display = "none";
+        if (refs.mapResultsToggleBtn)
+          refs.mapResultsToggleBtn.style.display = "inline-flex";
+      } else {
+        refs.mapModal.style.width = "92%";
+        refs.mapModal.style.maxWidth = "1100px";
+        refs.mapModal.style.height = "82%";
+        refs.mapModal.style.borderRadius = "12px";
+        refs.mapModalBackdrop.style.padding = "20px";
+        if (refs.mapSearchResultsPanel)
+          refs.mapSearchResultsPanel.style.display = "";
+        if (refs.mapResultsToggleBtn)
+          refs.mapResultsToggleBtn.style.display = "none";
+      }
 
       await ensureMapboxGL();
       mapboxgl.accessToken = MAPBOX_TOKEN;
 
-      // ensure theme toggle label initial state
       const initialTheme = getPreferredTheme();
       setPreferredTheme(initialTheme);
+      if (refs.mapThemeToggleBtn)
+        refs.mapThemeToggleBtn.textContent =
+          initialTheme === "dark" ? "🌙 Dark" : "☀️ Light";
 
-      if (!modalMap) {
-        modalMap = new mapboxgl.Map({
-          container: mapContainer,
-          style: initialTheme === "dark" ? DARK_STYLE() : LIGHT_STYLE(),
-          center: initialCoords
-            ? [initialCoords[0], initialCoords[1]]
-            : [28.0473, -26.2041],
-          zoom: initialCoords ? 14 : 12,
-        });
-
-        modalMap.on("click", (e) => {
-          const lng = e.lngLat.lng;
-          const lat = e.lngLat.lat;
-          setModalMarker([lng, lat]);
-        });
-
-        // ensure map resizes on orientation change and resize
-        window.addEventListener("orientationchange", () => {
-          setTimeout(() => modalMap && modalMap.resize(), 300);
-        });
-        window.addEventListener(
-          "resize",
-          debounce(() => {
-            modalMap && modalMap.resize();
-            // if viewport crosses mobile threshold, toggle layout
-            if (isMobileViewport()) enterMobileModalLayout();
-            else exitMobileModalLayout();
-          }, 200),
-        );
-      } else {
-        // switch style to match theme
-        applyMapStyleToMap(modalMap, getPreferredTheme());
-        modalMap.resize();
-        if (initialCoords)
-          modalMap.setCenter([initialCoords[0], initialCoords[1]]);
+      // initialize map (create new instance each open to avoid container mismatch)
+      if (modalMap) {
+        try {
+          modalMap.remove();
+        } catch (e) {
+          /* ignore */
+        }
+        modalMap = null;
+        modalMarker = null;
+        modalCurrentCoords = null;
       }
 
-      if (initialCoords) setModalMarker(initialCoords);
-      mapSelectedLabel.textContent = modalCurrentCoords
+      modalMap = new mapboxgl.Map({
+        container: refs.mapContainer,
+        style: initialTheme === "dark" ? DARK_STYLE() : LIGHT_STYLE(),
+        center: initialCoords
+          ? [initialCoords[0], initialCoords[1]]
+          : [28.0473, -26.2041],
+        zoom: initialCoords ? 14 : 12,
+      });
+
+      modalMap.on("click", (e) => {
+        const lng = e.lngLat.lng;
+        const lat = e.lngLat.lat;
+        setModalMarker([lng, lat], refs);
+      });
+
+      window.addEventListener("orientationchange", () =>
+        setTimeout(() => modalMap && modalMap.resize(), 300),
+      );
+      window.addEventListener(
+        "resize",
+        debounce(() => {
+          modalMap && modalMap.resize();
+          if (isMobileViewport()) enterMobileLayout(refs);
+          else exitMobileLayout(refs);
+        }, 200),
+      );
+
+      if (initialCoords) setModalMarker(initialCoords, refs);
+      refs.mapSelectedLabel.textContent = modalCurrentCoords
         ? `Selected: ${modalCurrentCoords[1].toFixed(6)}, ${modalCurrentCoords[0].toFixed(6)}`
         : "No point selected";
 
-      // wire search button
-      mapSearchBtn.onclick = async () => {
-        const q = mapSearchInput.value.trim();
-        if (!q) return;
-        mapResultsList.innerHTML = `<div style="padding:8px;color:#666">Searching…</div>`;
-        try {
-          const results = await searchPlacesMapbox(q, 12);
-          renderMapSearchResults(results);
-          if (results && results.length > 0) {
-            const first = results[0];
-            modalMap.setCenter([first.coords[0], first.coords[1]]);
-            modalMap.setZoom(14);
-            // on mobile, show results panel if hidden
-            if (isMobileViewport() && mapSearchResultsPanel)
-              mapSearchResultsPanel.style.display = "block";
+      if (refs.mapSearchBtn && refs.mapSearchInput) {
+        refs.mapSearchBtn.onclick = async () => {
+          const q = refs.mapSearchInput.value.trim();
+          if (!q) return;
+          if (refs.mapResultsList)
+            refs.mapResultsList.innerHTML = `<div style="padding:8px;color:#666">Searching…</div>`;
+          try {
+            const results = await searchPlacesMapbox(q, 12);
+            renderMapSearchResults(results, refs, mobile);
+            if (results && results.length > 0) {
+              const first = results[0];
+              modalMap.setCenter([first.coords[0], first.coords[1]]);
+              modalMap.setZoom(14);
+              if (mobile && refs.mapSearchResultsPanel)
+                refs.mapSearchResultsPanel.style.display = "block";
+            }
+          } catch (err) {
+            if (refs.mapResultsList)
+              refs.mapResultsList.innerHTML = `<div style="padding:8px;color:#a00">Search failed</div>`;
           }
-        } catch (err) {
-          mapResultsList.innerHTML = `<div style="padding:8px;color:#a00">Search failed</div>`;
-        }
-      };
+        };
+        refs.mapSearchInput.onkeydown = (e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            refs.mapSearchBtn.click();
+          }
+        };
+      }
 
-      mapSearchInput.onkeydown = (e) => {
-        if (e.key === "Enter") {
-          e.preventDefault();
-          mapSearchBtn.click();
-        }
-      };
+      if (refs.mapSelectConfirm) {
+        refs.mapSelectConfirm.onclick = async () => {
+          if (!modalCurrentCoords) return;
+          const label = await reverseGeocodeMapbox(
+            modalCurrentCoords[1],
+            modalCurrentCoords[0],
+          );
+          onConfirm && onConfirm({ coords: modalCurrentCoords, label });
+          closeModal(refs);
+        };
+      }
 
-      mapSelectConfirm.onclick = async () => {
-        if (!modalCurrentCoords) return;
-        const label = await reverseGeocodeMapbox(
-          modalCurrentCoords[1],
-          modalCurrentCoords[0],
-        );
-        onConfirm && onConfirm({ coords: modalCurrentCoords, label });
-        closeMapModal();
-      };
+      if (refs.mapModalClose)
+        refs.mapModalClose.onclick = () => closeModal(refs);
+      if (refs.mapModalCenterBtn)
+        refs.mapModalCenterBtn.onclick = () => {
+          if (modalCurrentCoords)
+            modalMap.setCenter([modalCurrentCoords[0], modalCurrentCoords[1]]);
+        };
 
-      mapModalClose.onclick = closeMapModal;
-      mapModalCenterBtn.onclick = () => {
-        if (modalCurrentCoords)
-          modalMap.setCenter([modalCurrentCoords[0], modalCurrentCoords[1]]);
-      };
+      if (refs.mapThemeToggleBtn) {
+        refs.mapThemeToggleBtn.onclick = () => {
+          const next = getPreferredTheme() === "dark" ? "light" : "dark";
+          setPreferredTheme(next);
+          refs.mapThemeToggleBtn.textContent =
+            next === "dark" ? "🌙 Dark" : "☀️ Light";
+          applyMapStyleToMap(modalMap, next);
+        };
+      }
 
-      function setModalMarker(coords) {
+      if (refs.mapResultsToggleBtn) {
+        refs.mapResultsToggleBtn.onclick = () => {
+          if (!refs.mapSearchResultsPanel) return;
+          refs.mapSearchResultsPanel.style.display =
+            refs.mapSearchResultsPanel.style.display === "block"
+              ? "none"
+              : "block";
+          setTimeout(() => modalMap && modalMap.resize(), 120);
+        };
+      }
+
+      function setModalMarker(coords, refsLocal) {
         modalCurrentCoords = coords;
+        if (!refsLocal) return;
         if (modalMarker) modalMarker.setLngLat([coords[0], coords[1]]);
         else
           modalMarker = new mapboxgl.Marker({ draggable: true })
@@ -915,17 +1020,20 @@ if (user) {
             .on("dragend", (ev) => {
               const p = ev.target.getLngLat();
               modalCurrentCoords = [p.lng, p.lat];
-              mapSelectedLabel.textContent = `Selected: ${modalCurrentCoords[1].toFixed(6)}, ${modalCurrentCoords[0].toFixed(6)}`;
+              if (refsLocal.mapSelectedLabel)
+                refsLocal.mapSelectedLabel.textContent = `Selected: ${modalCurrentCoords[1].toFixed(6)}, ${modalCurrentCoords[0].toFixed(6)}`;
             });
-        mapSelectedLabel.textContent = `Selected: ${coords[1].toFixed(6)}, ${coords[0].toFixed(6)}`;
+        if (refs.mapSelectedLabel)
+          refs.mapSelectedLabel.textContent = `Selected: ${coords[1].toFixed(6)}, ${coords[0].toFixed(6)}`;
         modalMap.setCenter([coords[0], coords[1]]);
         modalMap.setZoom(15);
       }
 
-      function renderMapSearchResults(results) {
-        mapResultsList.innerHTML = "";
+      function renderMapSearchResults(results, refsLocal, mobileFlag) {
+        if (!refsLocal || !refsLocal.mapResultsList) return;
+        refsLocal.mapResultsList.innerHTML = "";
         if (!results || results.length === 0) {
-          mapResultsList.innerHTML = `<div style="padding:8px;color:#666">No results</div>`;
+          refsLocal.mapResultsList.innerHTML = `<div style="padding:8px;color:#666">No results</div>`;
           return;
         }
         results.forEach((r) => {
@@ -943,60 +1051,53 @@ if (user) {
           row.appendChild(title);
           if (r.secondary) row.appendChild(sub);
           row.addEventListener("click", () => {
-            setModalMarker(r.coords);
-            // on mobile, keep results visible so user can confirm
-            if (isMobileViewport() && mapSearchResultsPanel)
-              mapSearchResultsPanel.style.display = "block";
+            setModalMarker(r.coords, refsLocal);
+            if (mobileFlag && refsLocal.mapSearchResultsPanel)
+              refsLocal.mapSearchResultsPanel.style.display = "block";
           });
-          mapResultsList.appendChild(row);
+          refsLocal.mapResultsList.appendChild(row);
         });
       }
 
-      function closeMapModal() {
-        mapModalBackdrop.style.display = "none";
-        // restore desktop layout when closing
-        exitMobileModalLayout();
+      function closeModal(refsLocal) {
+        if (refsLocal && refsLocal.mapModalBackdrop)
+          refsLocal.mapModalBackdrop.style.display = "none";
+        // restore desktop layout
+        if (refsLocal && refsLocal.mapModal) {
+          refsLocal.mapModal.style.width = "92%";
+          refsLocal.mapModal.style.maxWidth = "1100px";
+          refsLocal.mapModal.style.height = "82%";
+          refsLocal.mapModal.style.borderRadius = "12px";
+          refsLocal.mapModalBackdrop.style.padding = "20px";
+        }
       }
 
-      // ensure theme toggle wiring
-      if (mapThemeToggleBtn) {
-        mapThemeToggleBtn.textContent =
-          getPreferredTheme() === "dark" ? "🌙 Dark" : "☀️ Light";
-        mapThemeToggleBtn.onclick = () => {
-          const next = getPreferredTheme() === "dark" ? "light" : "dark";
-          setPreferredTheme(next);
-          applyMapStyleToMap(modalMap, next);
-        };
+      function enterMobileLayout(refsLocal) {
+        if (!refsLocal) return;
+        refsLocal.mapModal.style.width = "100%";
+        refsLocal.mapModal.style.maxWidth = "100%";
+        refsLocal.mapModal.style.height = "100%";
+        refsLocal.mapModal.style.borderRadius = "0";
+        refsLocal.mapModalBackdrop.style.padding = "0";
+        if (refsLocal.mapSearchResultsPanel)
+          refsLocal.mapSearchResultsPanel.style.display = "none";
+        if (refsLocal.mapResultsToggleBtn)
+          refsLocal.mapResultsToggleBtn.style.display = "inline-flex";
       }
 
-      // results toggle for mobile
-      if (mapResultsToggleBtn) {
-        mapResultsToggleBtn.style.display = isMobileViewport()
-          ? "inline-flex"
-          : "none";
-        mapResultsToggleBtn.onclick = () => {
-          if (!mapSearchResultsPanel) return;
-          mapSearchResultsPanel.style.display =
-            mapSearchResultsPanel.style.display === "block" ? "none" : "block";
-          // ensure map resizes when panel toggles
-          setTimeout(() => modalMap && modalMap.resize(), 120);
-        };
+      function exitMobileLayout(refsLocal) {
+        if (!refsLocal) return;
+        refsLocal.mapModal.style.width = "92%";
+        refsLocal.mapModal.style.maxWidth = "1100px";
+        refsLocal.mapModal.style.height = "82%";
+        refsLocal.mapModal.style.borderRadius = "12px";
+        refsLocal.mapModalBackdrop.style.padding = "20px";
+        if (refsLocal.mapSearchResultsPanel)
+          refsLocal.mapSearchResultsPanel.style.display = "";
+        if (refsLocal.mapResultsToggleBtn)
+          refsLocal.mapResultsToggleBtn.style.display = "none";
       }
 
-      // react to system theme changes if user hasn't chosen explicitly
-      if (window.matchMedia) {
-        window
-          .matchMedia("(prefers-color-scheme: dark)")
-          .addEventListener("change", (e) => {
-            const stored = localStorage.getItem("mapTheme");
-            if (stored) return;
-            const sys = e.matches ? "dark" : "light";
-            setPreferredTheme(sys);
-            applyMapStyleToMap(modalMap, sys);
-          });
-      }
-
-      // ensure map is visible and sized after opening
       setTimeout(() => {
         try {
           modalMap && modalMap.resize();
@@ -1005,22 +1106,29 @@ if (user) {
         }
       }, 120);
     } catch (err) {
-      mapModalBackdrop.style.display = "none";
-      error("openMapModal error", err);
+      console.error("[trip] openMapModal error (safe)", err);
+      try {
+        const b = document.querySelector("#map-modal-backdrop");
+        if (b) b.style.display = "none";
+      } catch (e) {}
       showLocationStatus("Map failed to open. See console for details.", true);
       throw err;
     }
   }
 
-  // Attach open map handlers
+  // ---------- Attach open map handlers (safe) ----------
   function attachMapOpenHandlers() {
-    log("attachMapOpenHandlers", {
-      openOrigin: !!openOriginMapBtn,
-      openDest: !!openDestMapBtn,
-    });
-    if (openOriginMapBtn)
-      openOriginMapBtn.addEventListener("click", async () => {
-        log("open-origin clicked");
+    ensureMapModalMarkup();
+
+    const openOrigin = document.querySelector("#open-origin-map");
+    const openDest = document.querySelector("#open-destination-map");
+
+    if (openOrigin) {
+      openOrigin.removeEventListener(
+        "click",
+        openOrigin._tripHandler || (() => {}),
+      );
+      openOrigin._tripHandler = async () => {
         try {
           await openMapModal(originCoords || null, ({ coords, label }) => {
             originCoords = coords;
@@ -1029,13 +1137,18 @@ if (user) {
             tryAutoCalculateIfReady();
           });
         } catch (err) {
-          error("open-origin error", err);
+          console.error("[trip] open-origin error", err);
         }
-      });
+      };
+      openOrigin.addEventListener("click", openOrigin._tripHandler);
+    }
 
-    if (openDestMapBtn)
-      openDestMapBtn.addEventListener("click", async () => {
-        log("open-destination clicked");
+    if (openDest) {
+      openDest.removeEventListener(
+        "click",
+        openDest._tripHandler || (() => {}),
+      );
+      openDest._tripHandler = async () => {
         try {
           await openMapModal(destCoords || null, ({ coords, label }) => {
             destCoords = coords;
@@ -1045,9 +1158,11 @@ if (user) {
             tryAutoCalculateIfReady();
           });
         } catch (err) {
-          error("open-destination error", err);
+          console.error("[trip] open-destination error", err);
         }
-      });
+      };
+      openDest.addEventListener("click", openDest._tripHandler);
+    }
   }
   setTimeout(attachMapOpenHandlers, 50);
 
@@ -1191,5 +1306,5 @@ if (user) {
   await requestServiceNotifications();
   vehicleList.forEach(notifyServiceDue);
 
-  log("trip.js initialized with responsive map support");
+  log("trip.js initialized");
 }
