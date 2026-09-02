@@ -275,6 +275,10 @@ if (user) {
 
   // ---------- DOM refs ----------
   const vehicleSelect = document.querySelector("#vehicle");
+  const defaultTripType = localStorage.getItem("defaultTripType");
+  if (defaultTripType === "personal" || defaultTripType === "business") {
+    document.querySelector("#trip-type").value = defaultTripType;
+  }
   const startOdoInput = document.querySelector("#start-odo");
   const useLastEndBtn = document.querySelector("#use-last-end-btn");
   const endOdoInput = document.querySelector("#end-odo");
@@ -350,8 +354,13 @@ if (user) {
   vehicleSelect.addEventListener("change", async () => {
     await populateStartOdometer(vehicleSelect.value);
   });
-  if (vehicleSelect.value)
-    setTimeout(() => populateStartOdometer(vehicleSelect.value), 0);
+  const requestedVehicle = new URLSearchParams(window.location.search).get("vehicle");
+  const defaultVehicle = localStorage.getItem("defaultVehicle");
+  const preferredVehicle = requestedVehicle || defaultVehicle;
+  if (preferredVehicle && vehicleSelect.querySelector(`option[value="${preferredVehicle}"]`)) {
+    vehicleSelect.value = preferredVehicle;
+  }
+  if (vehicleSelect.value) setTimeout(() => populateStartOdometer(vehicleSelect.value), 0);
 
   // ---------- Purpose other ----------
   function updatePurposeOtherVisibility() {
@@ -588,27 +597,36 @@ if (user) {
 
   // ---------- ORS directions via server proxy ----------
   async function calculateDrivingDistanceKm(originCoordsArr, destCoordsArr) {
+    if (!originCoordsArr || !destCoordsArr) throw new Error("Missing coordinates");
+
+    const apiBase =
+      window.__ENV?.VITE_API_URL ||
+      (window.location.port === "5500" ? "http://localhost:3000" : "");
     try {
-      if (!originCoordsArr || !destCoordsArr)
-        throw new Error("Missing coordinates");
-      const resp = await fetch("/api/ors/directions", {
+      const resp = await fetch(`${apiBase}/api/ors/directions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ coordinates: [originCoordsArr, destCoordsArr] }),
       });
-      if (!resp.ok) {
-        const text = await resp.text().catch(() => "");
-        error("ORS proxy returned non-ok", resp.status, text);
-        throw new Error("Directions request failed: " + resp.status);
-      }
+      if (!resp.ok) throw new Error(`Proxy returned ${resp.status}`);
       const data = await resp.json();
-      const meters = data?.routes?.[0]?.summary?.distance;
+      const meters =
+        data?.routes?.[0]?.summary?.distance ??
+        data?.features?.[0]?.properties?.summary?.distance;
       if (typeof meters === "number") return meters / 1000;
-      throw new Error("No route found");
-    } catch (err) {
-      error("calculateDrivingDistanceKm error", err);
-      throw err;
+    } catch (proxyError) {
+      warn("Directions proxy unavailable; using Mapbox fallback", proxyError.message);
     }
+
+    if (!MAPBOX_TOKEN) throw new Error("No directions service is configured");
+    const coordinates = `${originCoordsArr.join(",")};${destCoordsArr.join(",")}`;
+    const fallbackUrl = `https://api.mapbox.com/directions/v5/mapbox/driving/${coordinates}?alternatives=false&overview=false&access_token=${encodeURIComponent(MAPBOX_TOKEN)}`;
+    const fallbackResp = await fetch(fallbackUrl);
+    if (!fallbackResp.ok) throw new Error(`Mapbox directions failed: ${fallbackResp.status}`);
+    const fallbackData = await fallbackResp.json();
+    const fallbackMeters = fallbackData?.routes?.[0]?.distance;
+    if (typeof fallbackMeters !== "number") throw new Error("No route found");
+    return fallbackMeters / 1000;
   }
 
   // ---------- Geocode single address ----------
@@ -806,7 +824,7 @@ if (user) {
         <div id="map-modal" role="dialog" aria-modal="true" style="width:92%;max-width:1100px;height:82%;background:var(--card-bg,#fff);color:var(--text-color,#111);border-radius:12px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 12px 30px rgba(0,0,0,0.25);border:1px solid rgba(0,0,0,0.06)">
           <div class="modal-header" style="display:flex;gap:8px;align-items:center;padding:10px 14px;border-bottom:1px solid rgba(0,0,0,0.06);background:linear-gradient(180deg, rgba(255,255,255,0.02), transparent);flex-wrap:wrap">
             <div class="modal-title" style="font-weight:700">Select location on map</div>
-            <input id="map-search" placeholder="Search places on map" style="flex:1;padding:6px;border:1px solid #ddd;border-radius:6px" />
+            <div style="position:relative;flex:1;min-width:160px"><input id="map-search" placeholder="Search places on map" style="width:100%;padding:6px;border:1px solid #ddd;border-radius:6px" /><div id="map-search-dropdown" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:2200;background:#fff;border:1px solid #ddd;border-radius:6px;max-height:240px;overflow:auto"></div></div>
             <button id="map-search-btn" class="btn btn-secondary" style="padding:6px 10px">Search</button>
             <div style="display:flex;gap:8px;align-items:center">
               <button id="map-theme-toggle" class="btn btn-secondary" type="button" title="Toggle map theme" style="padding:6px 10px;border-radius:8px">☀️ Light</button>
@@ -940,6 +958,32 @@ if (user) {
         : "No point selected";
 
       if (refs.mapSearchBtn && refs.mapSearchInput) {
+        const mapSearchDropdown = document.querySelector("#map-search-dropdown");
+        const renderMapDropdown = (results) => {
+          mapSearchDropdown.innerHTML = "";
+          if (!results.length) {
+            mapSearchDropdown.style.display = "none";
+            return;
+          }
+          results.forEach((result) => {
+            const option = document.createElement("button");
+            option.type = "button";
+            option.style.cssText = "display:block;width:100%;padding:9px 10px;text-align:left;border:0;border-bottom:1px solid #eee;background:#fff;cursor:pointer";
+            option.textContent = `${result.label}${result.secondary ? `, ${result.secondary}` : ""}`;
+            option.addEventListener("click", () => {
+              setModalMarker(result.coords, refs);
+              refs.mapSearchInput.value = option.textContent;
+              mapSearchDropdown.style.display = "none";
+            });
+            mapSearchDropdown.appendChild(option);
+          });
+          mapSearchDropdown.style.display = "block";
+        };
+        refs.mapSearchInput.oninput = debounce(async () => {
+          const query = refs.mapSearchInput.value.trim();
+          if (query.length < 2) return mapSearchDropdown.style.display = "none";
+          renderMapDropdown(await searchPlacesMapbox(query, 6));
+        }, 250);
         refs.mapSearchBtn.onclick = async () => {
           const q = refs.mapSearchInput.value.trim();
           if (!q) return;
@@ -947,6 +991,7 @@ if (user) {
             refs.mapResultsList.innerHTML = `<div style="padding:8px;color:#666">Searching…</div>`;
           try {
             const results = await searchPlacesMapbox(q, 12);
+            mapSearchDropdown.style.display = "none";
             renderMapSearchResults(results, refs, mobile);
             if (results && results.length > 0) {
               const first = results[0];

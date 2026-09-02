@@ -95,18 +95,6 @@ if (user) {
       }).join("")
     : '<div class="empty">No recent trips.</div>';
 
-  // Vehicle add form — include current mileage and latest_logbook_mileage guidance
-  const formMarkup = `<form id="vehicle-form" class="form-grid">
-    <div class="field"><label for="plate">Number plate</label><input name="plate" id="plate" required></div>
-    <div class="field"><label for="make">Make</label><input name="make" id="make" required></div>
-    <div class="field"><label for="model">Model</label><input name="model" id="model" required></div>
-    <div class="field"><label for="year">Year</label><input name="year" id="year" type="number" min="1886" max="2200"></div>
-    <div class="field"><label for="last-service">Last service mileage (km)</label><input name="last-service" id="last-service" type="number" min="0"></div>
-    <div class="field"><label for="next-service">Next service mileage (km)</label><input name="next-service" id="next-service" type="number" min="0"></div>
-    <div class="field"><label for="mileage">Current mileage (km)</label><input name="mileage" id="mileage" type="number" min="0" required></div>
-    <div class="form-actions field full"><button class="btn btn-primary" type="submit">Add vehicle →</button></div>
-  </form>`;
-
   await shell("home", `
     <header class="topbar">
       <div>
@@ -141,15 +129,41 @@ if (user) {
         ${tripActivityMarkup}
       </div>
 
-      <div class="card" style="margin-left:0">
-        <div class="card-head"><h2>Add another vehicle</h2></div>
-        ${formMarkup}
+      <div class="card">
+        <div class="card-head"><h2>Vehicle management</h2></div>
+        <p class="row-sub">Keep your vehicle details and service intervals up to date.</p>
+        <button class="btn btn-primary" id="add-vehicle-btn" type="button">Add vehicle →</button>
       </div>
     </section>
   `);
 
   await requestServiceNotifications();
   currentVehicles.forEach(notifyServiceDue);
+
+  document.querySelector("#add-vehicle-btn").addEventListener("click", () => {
+    const backdrop = document.createElement("div");
+    backdrop.className = "modal-backdrop";
+    backdrop.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-labelledby="add-vehicle-title"><div class="modal-head"><h2 id="add-vehicle-title">Add vehicle</h2><button class="modal-close" type="button" aria-label="Close">×</button></div><form id="add-vehicle-form" class="form-grid"><div class="field"><label for="add-plate">Number plate</label><input id="add-plate" required></div><div class="field"><label for="add-make">Make</label><input id="add-make" required></div><div class="field"><label for="add-model">Model</label><input id="add-model" required></div><div class="field"><label for="add-year">Year</label><input id="add-year" type="number" min="1886" max="2200"></div><div class="field"><label for="add-last-service">Last service mileage (km)</label><input id="add-last-service" type="number" min="0"></div><div class="field"><label for="add-next-service">Next service mileage (km)</label><input id="add-next-service" type="number" min="0"></div><div class="field"><label for="add-mileage">Current mileage (km)</label><input id="add-mileage" type="number" min="0" required></div><div class="form-actions field full"><button class="btn btn-secondary modal-cancel" type="button">Cancel</button><button class="btn btn-primary" type="submit">Add vehicle →</button></div></form></div>`;
+    document.body.append(backdrop);
+    const close = () => backdrop.remove();
+    backdrop.querySelector(".modal-close").addEventListener("click", close);
+    backdrop.querySelector(".modal-cancel").addEventListener("click", close);
+    backdrop.querySelector("#add-vehicle-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const { error } = await supabase.from("vehicles").insert({
+        user_id: user.id,
+        number_plate: backdrop.querySelector("#add-plate").value.trim().toUpperCase(),
+        make: backdrop.querySelector("#add-make").value.trim(),
+        model: backdrop.querySelector("#add-model").value.trim(),
+        year: backdrop.querySelector("#add-year").value || null,
+        last_service_mileage: backdrop.querySelector("#add-last-service").value ? Number(backdrop.querySelector("#add-last-service").value) : null,
+        current_mileage: Number(backdrop.querySelector("#add-mileage").value),
+        next_service_mileage: backdrop.querySelector("#add-next-service").value ? Number(backdrop.querySelector("#add-next-service").value) : null,
+      });
+      if (error) return window.alert(error.message);
+      window.location.reload();
+    });
+  });
 
   // Wire up the new Fill-up and Log trip buttons on each vehicle row
   document.querySelectorAll("[data-fillup]").forEach((btn) => {
@@ -208,39 +222,6 @@ if (user) {
     })
   );
 
-  // Add / upsert vehicle form — do not write any "service_reminder_confirmed_for" field
-  document.querySelector("#vehicle-form").addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const form = event.target;
-    const vehicleId = form.id?.value || null;
-
-    // If user didn't provide current mileage, prefer latest_logbook_mileage if available
-    let currentMileage = Number(form.mileage.value);
-    if (!Number.isFinite(currentMileage) || currentMileage === 0) {
-      // try to find a matching vehicle in currentVehicles by plate (case-insensitive)
-      const plate = (form.plate.value || "").trim().toUpperCase();
-      const existing = currentVehicles.find(v => String(v.number_plate || "").toUpperCase() === plate);
-      if (existing && Number.isFinite(Number(existing.latest_logbook_mileage))) {
-        currentMileage = Number(existing.latest_logbook_mileage);
-      }
-    }
-
-    const upsertObj = {
-      id: vehicleId || undefined,
-      user_id: user.id,
-      number_plate: form.plate.value.trim().toUpperCase(),
-      make: form.make.value.trim(),
-      model: form.model.value.trim(),
-      year: form.year.value || null,
-      last_service_mileage: form["last-service"].value ? Number(form["last-service"].value) : null,
-      current_mileage: Number.isFinite(Number(currentMileage)) ? Number(currentMileage) : null,
-      next_service_mileage: form["next-service"].value ? Number(form["next-service"].value) : null,
-    };
-
-    const { error } = await supabase.from("vehicles").upsert(upsertObj);
-    if (error) return window.alert(error.message);
-    window.location.reload();
-  });
 }
 
 // small helper used in template if not present globally

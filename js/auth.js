@@ -103,5 +103,5 @@ form.addEventListener("submit", async (event) => {
       ? "Account created. Check your email to confirm your account."
       : "Welcome back. Opening your logbook...";
   if (result.data.session)
-    setTimeout(() => (window.location.href = "vehicles.html"), 350);
+    setTimeout(() => (window.location.href = "dashboard.html"), 350);
 });

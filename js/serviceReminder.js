@@ -34,6 +34,7 @@ export const serviceReminderMarkup = (vehicleItem) => {
 };
 
 export const notifyServiceDue = (vehicleItem) => {
+  if (localStorage.getItem("serviceNotifications") === "off") return;
   if (!isServiceDue(vehicleItem) || !("Notification" in window)) return;
   if (Notification.permission === "granted") {
     new Notification("Vehicle service due", {
@@ -44,6 +45,7 @@ export const notifyServiceDue = (vehicleItem) => {
 };
 
 export const requestServiceNotifications = async () => {
+  if (localStorage.getItem("serviceNotifications") === "off") return;
   if ("Notification" in window && Notification.permission === "default")
     await Notification.requestPermission();
 };

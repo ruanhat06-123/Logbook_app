@@ -4,6 +4,18 @@ require("dotenv").config();
 const express = require("express");
 const fetch = require("node-fetch"); // npm i node-fetch@2
 const app = express();
+app.use((req, res, next) => {
+  const allowedOrigins = new Set([
+    "http://127.0.0.1:5500",
+    "http://localhost:5500",
+  ]);
+  const origin = req.headers.origin;
+  if (allowedOrigins.has(origin)) res.setHeader("Access-Control-Allow-Origin", origin);
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  if (req.method === "OPTIONS") return res.sendStatus(204);
+  next();
+});
 app.use(express.json());
 
 const ORS_KEY = process.env.ORS_API_KEY;

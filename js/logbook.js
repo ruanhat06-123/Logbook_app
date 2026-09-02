@@ -119,6 +119,11 @@ if (user) {
 
   // DOM refs
   const vehicleSelect = document.querySelector("#vehicle");
+  const requestedVehicle = new URLSearchParams(window.location.search).get("vehicle");
+  const preferredVehicle = requestedVehicle || localStorage.getItem("defaultVehicle");
+  if (preferredVehicle && vehicleSelect.querySelector(`option[value="${preferredVehicle}"]`)) {
+    vehicleSelect.value = preferredVehicle;
+  }
   const previousInput = document.querySelector("#previous");
   const currentInput = document.querySelector("#current");
   const litersInput = document.querySelector("#liters");
