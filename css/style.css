@@ -741,7 +741,7 @@ h3 {
   background: none;
 }
 .auth-link {
-  display: block;
+  display: none !important;
   margin: 16px auto 0;
   border: 0;
   background: transparent;

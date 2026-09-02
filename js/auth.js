@@ -3,6 +3,7 @@ document.documentElement.dataset.theme =
   localStorage.getItem("theme") || "light";
 const form = document.querySelector("#auth-form");
 let signup = false;
+const showForgotPassword = false;
 const title = document.querySelector("#form-title"),
   description = document.querySelector("#form-description"),
   button = document.querySelector("#submit-button"),
@@ -62,8 +63,9 @@ switchMode.addEventListener("click", () => {
   button.textContent = signup ? "Create account →" : "Sign in →";
   switchCopy.textContent = signup ? "Already have an account?" : "New here?";
   switchMode.textContent = signup ? "Sign in instead" : "Create an account";
-  forgotPassword.hidden = signup;
+  forgotPassword.hidden = !showForgotPassword || signup;
 });
+forgotPassword.hidden = !showForgotPassword;
 forgotPassword.addEventListener("click", async () => {
   const email = document.querySelector("#email").value.trim();
   if (!email) {
