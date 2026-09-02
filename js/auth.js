@@ -14,7 +14,8 @@ const title = document.querySelector("#form-title"),
   passwordToggle = document.querySelector("#password-toggle"),
   nameFields = document.querySelector("#name-fields"),
   firstName = document.querySelector("#first-name"),
-  surname = document.querySelector("#surname");
+  surname = document.querySelector("#surname"),
+  forgotPassword = document.querySelector("#forgot-password");
 const validSignupPassword = (value) =>
   value.length >= 8 &&
   /[A-Z]/.test(value) &&
@@ -61,6 +62,24 @@ switchMode.addEventListener("click", () => {
   button.textContent = signup ? "Create account →" : "Sign in →";
   switchCopy.textContent = signup ? "Already have an account?" : "New here?";
   switchMode.textContent = signup ? "Sign in instead" : "Create an account";
+  forgotPassword.hidden = signup;
+});
+forgotPassword.addEventListener("click", async () => {
+  const email = document.querySelector("#email").value.trim();
+  if (!email) {
+    notice.hidden = false;
+    notice.textContent = "Enter your email address first.";
+    document.querySelector("#email").focus();
+    return;
+  }
+  forgotPassword.disabled = true;
+  const redirectTo = "https://logbook-app-lilac.vercel.app/reset-password.html";
+  const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+  notice.hidden = false;
+  notice.textContent = error
+    ? error.message
+    : "Password reset instructions have been sent to your email.";
+  forgotPassword.disabled = false;
 });
 form.addEventListener("submit", async (event) => {
   event.preventDefault();

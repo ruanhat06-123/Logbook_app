@@ -740,6 +740,18 @@ h3 {
   font-weight: 800;
   background: none;
 }
+.auth-link {
+  display: block;
+  margin: 16px auto 0;
+  border: 0;
+  background: transparent;
+  color: var(--teal);
+  font-size: 11px;
+  font-weight: 800;
+}
+.auth-link:hover {
+  text-decoration: underline;
+}
 .row-actions {
   display: flex;
   align-items: center;
