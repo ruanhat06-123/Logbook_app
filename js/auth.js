@@ -75,7 +75,7 @@ forgotPassword.addEventListener("click", async () => {
     return;
   }
   forgotPassword.disabled = true;
-  const redirectTo = "https://logbook-app-lilac.vercel.app/reset-password.html";
+  const redirectTo = "https://logmate.co.za/reset-password.html";
   const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
   notice.hidden = false;
   notice.textContent = error

@@ -28,8 +28,40 @@ document.querySelectorAll("[data-password-toggle]").forEach((toggle) => {
 const validPassword = (value) =>
   value.length >= 8 && /[A-Z]/.test(value) && /[a-z]/.test(value) && /[0-9]/.test(value);
 
-const { data } = await supabase.auth.getSession();
-if (!data.session) {
+const recoverySession = new Promise((resolve) => {
+  let settled = false;
+  let subscription;
+  const finish = (session) => {
+    if (settled) return;
+    settled = true;
+    subscription?.unsubscribe();
+    resolve(session);
+  };
+  const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+    if (event === "PASSWORD_RECOVERY" || session) finish(session);
+  });
+  subscription = listener.subscription;
+  supabase.auth.getSession().then(async ({ data }) => {
+    if (data.session) return finish(data.session);
+    const params = new URLSearchParams(window.location.search);
+      const code = params.get("code");
+      if (code) {
+        const { data: exchanged, error } = await supabase.auth.exchangeCodeForSession(code);
+        if (!error && exchanged?.session) return finish(exchanged.session);
+      }
+    const tokenHash = params.get("token_hash");
+    if (tokenHash) {
+      const { data: verified } = await supabase.auth.verifyOtp({
+        token_hash: tokenHash,
+        type: "recovery",
+      });
+      return finish(verified?.session || null);
+    }
+    setTimeout(() => finish(null), 2000);
+  });
+});
+
+if (!(await recoverySession)) {
   showNotice("This reset link is invalid or has expired. Request a new one from the sign-in page.", true);
   form.hidden = true;
 }
