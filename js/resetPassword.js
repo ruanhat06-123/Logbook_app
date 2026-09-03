@@ -67,7 +67,7 @@ if (session?.user?.email) {
   emailInput.value = session.user.email;
   emailInput.readOnly = true;
 } else {
-  showNotice("Enter your email below to request a new password reset link.");
+  showNotice("Enter your email address so we can verify it's you.");
   newPassword.closest(".field").hidden = true;
   confirmPassword.closest(".field").hidden = true;
   newPassword.required = false;
@@ -103,5 +103,5 @@ form.addEventListener("submit", async (event) => {
   }
   showNotice("Password updated. You can now sign in with your new password.");
   form.reset();
-  setTimeout(() => { window.location.href = "index.html"; }, 1200);
+  setTimeout(() => { window.location.href = "login.html"; }, 1200);
 });

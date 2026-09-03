@@ -3,10 +3,37 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta http-equiv="refresh" content="0; url=html/index.html" />
     <title>LogMate</title>
+    <link rel="icon" type="image/svg+xml" href="logo.svg" />
+    <link rel="stylesheet" href="css/style.css" />
   </head>
   <body>
-    <p>Opening LogMate...</p>
+    <main class="landing-page">
+      <nav class="landing-nav">
+        <a class="brand" href="index.html"><img class="brand-mark" src="logo.svg" alt="" /> LogMate</a>
+        <div class="landing-nav-actions"><a class="landing-login" href="html/login.html">Log in</a><a class="btn btn-primary" href="html/login.html?mode=signup">Create account</a></div>
+      </nav>
+      <section class="landing-hero">
+        <div class="landing-hero-copy">
+          <div class="eyebrow">Your driving, in one place</div>
+          <h1>Keep every journey moving.</h1>
+          <p>LogMate brings vehicles, fuel, trips, service schedules, and reports into one calm, useful logbook built for everyday driving.</p>
+          <div class="landing-actions"><a class="btn btn-primary" href="html/login.html?mode=signup">Start your logbook →</a><a class="landing-text-link" href="html/login.html">Already have an account? Log in</a></div>
+          <div class="landing-proof"><span>Fuel and trip history</span><span>Service reminders</span><span>Private account data</span></div>
+        </div>
+        <div class="landing-dashboard-preview" aria-label="LogMate dashboard overview">
+          <div class="preview-top"><span class="preview-dot"></span><span class="preview-dot"></span><span class="preview-dot"></span><span class="preview-label">LOGMATE / OVERVIEW</span></div>
+          <div class="preview-heading"><span>Good morning.</span><strong>PERSONAL LOGBOOK</strong></div>
+          <div class="preview-stats"><div><small>Active vehicles</small><strong>02</strong></div><div><small>Fuel logged</small><strong>184.6 L</strong></div><div><small>Distance logged</small><strong>2,840 km</strong></div></div>
+          <div class="preview-route"><span class="route-line"></span><div><small>RECENT TRIP</small><strong>Home <i>to</i> Client office</strong><span>Business · 34 km</span></div></div>
+        </div>
+      </section>
+      <section class="landing-overview">
+        <div><div class="eyebrow">Everything connected</div><h2>A better record of the road.</h2></div>
+        <div class="landing-feature-grid"><article><span class="feature-number">01</span><h3>Know your vehicles</h3><p>Keep each vehicle’s mileage, service intervals, registration details, and activity easy to find.</p></article><article><span class="feature-number">02</span><h3>Capture every stop</h3><p>Record fuel, price, location, consumption, and mileage so your running costs tell a useful story.</p></article><article><span class="feature-number">03</span><h3>Make trips effortless</h3><p>Use map search, automatic route distance, trip types, and purpose tracking for cleaner records.</p></article><article><span class="feature-number">04</span><h3>See the bigger picture</h3><p>Turn your entries into fuel and trip reports that help you understand how you drive.</p></article></div>
+      </section>
+      <footer class="landing-footer"><span>LogMate</span><span>A clearer road ahead.</span><a href="html/login.html?mode=signup">Create your free account →</a></footer>
+    </main>
+    <script src="js/landing.js"></script>
   </body>
 </html>

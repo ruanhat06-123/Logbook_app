@@ -4,12 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>LogMate</title>
+    <link rel="icon" type="image/svg+xml" href="../logo.svg" />
     <link rel="stylesheet" href="../css/style.css" />
   </head>
   <body>
     <div class="auth-page">
       <section class="auth-intro">
-        <div class="brand"><span class="brand-mark">↗</span> LogMate</div>
+        <div class="brand"><img class="brand-mark" src="../logo.svg" alt="" /> LogMate</div>
         <div class="auth-copy">
           <div class="auth-tag">A clearer road ahead</div>
           <h1>Your car,<br />in context.</h1>
@@ -29,68 +30,28 @@
             <div class="form-grid auth-name-fields" id="name-fields" hidden>
               <div class="field">
                 <label for="first-name">First name</label
-                ><input
-                  id="first-name"
-                  type="text"
-                  placeholder="Enter first name"
-                  autocomplete="given-name"
-                />
+                ><input id="first-name" type="text" placeholder="Enter first name" autocomplete="given-name" />
               </div>
               <div class="field">
                 <label for="surname">Surname</label
-                ><input
-                  id="surname"
-                  type="text"
-                  placeholder="Enter surname"
-                  autocomplete="family-name"
-                />
+                ><input id="surname" type="text" placeholder="Enter surname" autocomplete="family-name" />
               </div>
             </div>
             <div class="field">
               <label for="email">Email address</label
-              ><input
-                id="email"
-                type="email"
-                placeholder="Enter email address"
-                autocomplete="email"
-                required
-              />
+              ><input id="email" type="email" placeholder="Enter email address" autocomplete="email" required />
             </div>
             <div class="field">
               <label for="password">Password</label>
               <div class="password-field">
-                <input
-                  id="password"
-                  type="password"
-                  placeholder="Enter password"
-                  minlength="1"
-                  aria-describedby="password-help"
-                  autocomplete="current-password"
-                  required
-                /><button
-                  type="button"
-                  class="password-toggle"
-                  id="password-toggle"
-                  aria-controls="password"
-                  aria-label="Show password"
-                >
-                  Show
-                </button>
+                <input id="password" type="password" placeholder="Enter password" minlength="1" aria-describedby="password-help" autocomplete="current-password" required /><button type="button" class="password-toggle" id="password-toggle" aria-controls="password" aria-label="Show password">Show</button>
               </div>
-              <small id="password-help" class="field-help" hidden>
-                Use at least 8 characters, including an uppercase letter, a
-                lowercase letter, and a number.
-              </small>
+              <small id="password-help" class="field-help" hidden>Use at least 8 characters, including an uppercase letter, a lowercase letter, and a number.</small>
             </div>
-            <button class="btn btn-primary" type="submit" id="submit-button">
-              Sign in →
-            </button>
+            <button class="btn btn-primary" type="submit" id="submit-button">Sign in →</button>
             <button class="auth-link" type="button" id="forgot-password" hidden>Forgot password?</button>
           </form>
-          <div class="auth-switch">
-            <span id="switch-copy">New here?</span>
-            <button type="button" id="switch-mode">Create an account</button>
-          </div>
+          <div class="auth-switch"><span id="switch-copy">New here?</span><button type="button" id="switch-mode">Create an account</button></div>
           <div class="notice" id="auth-notice" hidden></div>
         </div>
       </section>

@@ -122,7 +122,7 @@ function renderNav(active, user) {
         .map((part) => part[0].toUpperCase())
         .join("") || "U";
 
-  nav.innerHTML = `<div class="brand"><span class="brand-mark">↗</span> LogMate</div><div class="nav-label">Workspace</div><nav class="nav"><a class="${active === "home" ? "active" : ""}" href="dashboard.html"><span class="nav-icon">⌂</span>Overview</a><a class="${active === "vehicles" ? "active" : ""}" href="vehicles.html"><span class="nav-icon">▣</span>My vehicles</a><a class="${active === "logbook" ? "active" : ""}" href="logbook.html"><span class="nav-icon">＋</span>New fill-up</a><a class="${active === "trip" ? "active" : ""}" href="trip.html"><span class="nav-icon">↗</span>New trip</a><a class="${active === "report" ? "active" : ""}" href="report.html"><span class="nav-icon">▤</span>Fuel reports</a><a class="${active === "trip-report" ? "active" : ""}" href="trip-report.html"><span class="nav-icon">◫</span>Trip reports</a></nav><a class="nav-settings ${active === "settings" ? "active" : ""}" href="settings.html" aria-label="Settings" title="Settings"><span class="nav-icon" aria-hidden="true">⚙</span></a><div class="sidebar-footer"><div class="user-chip"><span class="avatar">${escapeHtml(initials)}</span><div><div class="user-name">${escapeHtml(displayName)}</div><div class="user-role">Personal account</div></div></div><button class="signout" data-signout>Sign out →</button></div>`;
+  nav.innerHTML = `<div class="brand"><img class="brand-mark" src="../logo.svg" alt="" /> LogMate</div><div class="nav-label">Workspace</div><nav class="nav"><a class="${active === "home" ? "active" : ""}" href="dashboard.html"><span class="nav-icon">⌂</span>Overview</a><a class="${active === "vehicles" ? "active" : ""}" href="vehicles.html"><span class="nav-icon">▣</span>My vehicles</a><a class="${active === "logbook" ? "active" : ""}" href="logbook.html"><span class="nav-icon">＋</span>New fill-up</a><a class="${active === "trip" ? "active" : ""}" href="trip.html"><span class="nav-icon">↗</span>New trip</a><a class="${active === "report" ? "active" : ""}" href="report.html"><span class="nav-icon">▤</span>Fuel reports</a><a class="${active === "trip-report" ? "active" : ""}" href="trip-report.html"><span class="nav-icon">◫</span>Trip reports</a></nav><a class="nav-settings ${active === "settings" ? "active" : ""}" href="settings.html" aria-label="Settings" title="Settings"><span class="nav-icon" aria-hidden="true">⚙</span></a><div class="sidebar-footer"><div class="user-chip"><span class="avatar">${escapeHtml(initials)}</span><div><div class="user-name">${escapeHtml(displayName)}</div><div class="user-role">Personal account</div></div></div><button class="signout" data-signout>Sign out →</button></div>`;
 }
 
 /**
@@ -131,7 +131,7 @@ function renderNav(active, user) {
 async function requireAuth() {
   const { data } = await supabase.auth.getSession();
   if (!data.session) {
-    window.location.href = "index.html";
+    window.location.href = "login.html";
     return null;
   }
   return data.session.user;
@@ -169,7 +169,8 @@ async function shell(active, content) {
     .querySelector("[data-signout]")
     ?.addEventListener("click", async () => {
       await supabase.auth.signOut();
-      window.location.href = "index.html";
+      document.cookie = "logmate_email=; Max-Age=0; Path=/; SameSite=Lax";
+      window.location.href = "login.html";
     });
 
   // reload when a service is confirmed elsewhere in the app

@@ -4,6 +4,7 @@ document.documentElement.dataset.theme =
 const form = document.querySelector("#auth-form");
 let signup = false;
 const showForgotPassword = true;
+if (new URLSearchParams(window.location.search).get("mode") === "signup") signup = true;
 const title = document.querySelector("#form-title"),
   description = document.querySelector("#form-description"),
   button = document.querySelector("#submit-button"),
@@ -46,8 +47,8 @@ passwordToggle.addEventListener("click", () => {
     visible ? "Show password" : "Hide password",
   );
 });
-switchMode.addEventListener("click", () => {
-  signup = !signup;
+const applyAuthMode = (isSignup) => {
+  signup = isSignup;
   nameFields.hidden = !signup;
   firstName.required = signup;
   surname.required = signup;
@@ -64,7 +65,9 @@ switchMode.addEventListener("click", () => {
   switchCopy.textContent = signup ? "Already have an account?" : "New here?";
   switchMode.textContent = signup ? "Sign in instead" : "Create an account";
   forgotPassword.hidden = !showForgotPassword || signup;
-});
+};
+switchMode.addEventListener("click", () => applyAuthMode(!signup));
+applyAuthMode(signup);
 forgotPassword.hidden = !showForgotPassword;
 forgotPassword.addEventListener("click", async () => {
   const email = document.querySelector("#email").value.trim();
@@ -101,6 +104,7 @@ form.addEventListener("submit", async (event) => {
         email,
         password: passwordValue,
         options: {
+          emailRedirectTo: "https://logmate.co.za/email-verification.html",
           data: {
             first_name: firstName.value.trim(),
             surname: surname.value.trim(),
@@ -123,6 +127,8 @@ form.addEventListener("submit", async (event) => {
     signup && !result.data.session
       ? "Account created. Check your email to confirm your account."
       : "Welcome back. Opening your logbook...";
+  if (result.data.session)
+    document.cookie = `logmate_email=${encodeURIComponent(email)}; Max-Age=31536000; Path=/; SameSite=Lax`;
   if (result.data.session)
     setTimeout(() => (window.location.href = "dashboard.html"), 350);
 });
