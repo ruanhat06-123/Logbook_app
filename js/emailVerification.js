@@ -65,12 +65,9 @@ const { session, error: verificationError } = await recovery;
 const verificationComplete = Boolean(session);
 
 if (verificationError) {
-  listener.subscription.unsubscribe();
   showFailure(verificationError.message);
 } else if (verificationComplete) {
-  listener.subscription.unsubscribe();
   showSuccess();
 } else {
-  listener.subscription.unsubscribe();
   showFailure("Request a new confirmation email by creating your account again or contact support.");
 }
