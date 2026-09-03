@@ -104,7 +104,7 @@ form.addEventListener("submit", async (event) => {
         email,
         password: passwordValue,
         options: {
-          emailRedirectTo: "https://logmate.co.za/email-verification.html",
+          emailRedirectTo: "https://logmate.co.za/html/dashboard.html",
           data: {
             first_name: firstName.value.trim(),
             surname: surname.value.trim(),

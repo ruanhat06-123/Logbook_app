@@ -22,7 +22,7 @@ const showSuccess = () => {
   message.textContent = "Your LogMate account is ready. You can now sign in.";
   action.hidden = false;
   setTimeout(() => {
-    window.location.href = "login.html";
+    window.location.href = "dashboard.html";
   }, 1800);
 };
 
