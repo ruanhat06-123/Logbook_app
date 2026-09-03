@@ -104,7 +104,6 @@ form.addEventListener("submit", async (event) => {
         email,
         password: passwordValue,
         options: {
-          emailRedirectTo: "https://www.logmate.co.za/html/email-verification.html",
           data: {
             first_name: firstName.value.trim(),
             surname: surname.value.trim(),
@@ -125,7 +124,7 @@ form.addEventListener("submit", async (event) => {
   notice.hidden = false;
   notice.textContent =
     signup && !result.data.session
-      ? "Account created. Check your email to confirm your account."
+      ? "Account created. You can now sign in."
       : "Welcome back. Opening your logbook...";
   if (result.data.session)
     document.cookie = `logmate_email=${encodeURIComponent(email)}; Max-Age=31536000; Path=/; SameSite=Lax`;
