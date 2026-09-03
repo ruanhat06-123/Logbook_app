@@ -26,34 +26,43 @@ const showSuccess = () => {
   }, 1800);
 };
 
-let verificationComplete = false;
-const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
-  if (event === "SIGNED_IN" && session) {
-    verificationComplete = true;
-    showSuccess();
-  }
+const recovery = new Promise((resolve) => {
+  let settled = false;
+  let subscription;
+  const finish = (session, error = null) => {
+    if (settled) return;
+    settled = true;
+    subscription?.unsubscribe();
+    resolve({ session, error });
+  };
+  const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+    if (["SIGNED_IN", "INITIAL_SESSION"].includes(event) && session) finish(session);
+  });
+  subscription = listener.subscription;
+
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get("code");
+  const tokenHash = params.get("token_hash");
+  (async () => {
+    if (code) {
+      const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+      return finish(data?.session || null, error);
+    }
+    if (tokenHash) {
+      const { data, error } = await supabase.auth.verifyOtp({
+        token_hash: tokenHash,
+        type: "signup",
+      });
+      return finish(data?.session || null, error);
+    }
+    const { data } = await supabase.auth.getSession();
+    if (data.session) return finish(data.session);
+    setTimeout(() => finish(null), 3000);
+  })();
 });
 
-const params = new URLSearchParams(window.location.search);
-const code = params.get("code");
-const tokenHash = params.get("token_hash");
-let verificationError = null;
-
-if (code) {
-  const { data, error } = await supabase.auth.exchangeCodeForSession(code);
-  verificationError = error;
-  verificationComplete = Boolean(data?.session);
-} else if (tokenHash) {
-  const { data, error } = await supabase.auth.verifyOtp({
-    token_hash: tokenHash,
-    type: "signup",
-  });
-  verificationError = error;
-  verificationComplete = Boolean(data?.session);
-} else {
-  const { data } = await supabase.auth.getSession();
-  verificationComplete = Boolean(data.session);
-}
+const { session, error: verificationError } = await recovery;
+const verificationComplete = Boolean(session);
 
 if (verificationError) {
   listener.subscription.unsubscribe();
