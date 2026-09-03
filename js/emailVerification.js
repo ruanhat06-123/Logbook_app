@@ -43,6 +43,9 @@ const recovery = new Promise((resolve) => {
   const params = new URLSearchParams(window.location.search);
   const code = params.get("code");
   const tokenHash = params.get("token_hash");
+  const hashParams = new URLSearchParams(window.location.hash.slice(1));
+  const accessToken = hashParams.get("access_token");
+  const refreshToken = hashParams.get("refresh_token");
   (async () => {
     if (code) {
       const { data, error } = await supabase.auth.exchangeCodeForSession(code);
@@ -52,6 +55,13 @@ const recovery = new Promise((resolve) => {
       const { data, error } = await supabase.auth.verifyOtp({
         token_hash: tokenHash,
         type: "signup",
+      });
+      return finish(data?.session || null, error);
+    }
+    if (accessToken && refreshToken) {
+      const { data, error } = await supabase.auth.setSession({
+        access_token: accessToken,
+        refresh_token: refreshToken,
       });
       return finish(data?.session || null, error);
     }
