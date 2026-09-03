@@ -7,6 +7,7 @@ const button = document.querySelector("#reset-button");
 const notice = document.querySelector("#reset-notice");
 const newPassword = document.querySelector("#new-password");
 const confirmPassword = document.querySelector("#confirm-password");
+const emailInput = document.querySelector("#reset-email");
 
 const showNotice = (message, isError = false) => {
   notice.hidden = false;
@@ -61,13 +62,30 @@ const recoverySession = new Promise((resolve) => {
   });
 });
 
-if (!(await recoverySession)) {
-  showNotice("This reset link is invalid or has expired. Request a new one from the sign-in page.", true);
-  form.hidden = true;
+const session = await recoverySession;
+if (session?.user?.email) {
+  emailInput.value = session.user.email;
+  emailInput.readOnly = true;
+} else {
+  showNotice("Enter your email below to request a new password reset link.");
+  newPassword.closest(".field").hidden = true;
+  confirmPassword.closest(".field").hidden = true;
+  newPassword.required = false;
+  confirmPassword.required = false;
+  button.textContent = "Send reset link →";
 }
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (!session) {
+    button.disabled = true;
+    const { error } = await supabase.auth.resetPasswordForEmail(emailInput.value.trim(), {
+      redirectTo: "https://logmate.co.za/reset-password.html",
+    });
+    showNotice(error ? error.message : "A new password reset link has been sent to your email.", Boolean(error));
+    button.disabled = false;
+    return;
+  }
   if (!validPassword(newPassword.value)) {
     showNotice("Password must be at least 8 characters and include an uppercase letter, a lowercase letter, and a number.", true);
     return;
