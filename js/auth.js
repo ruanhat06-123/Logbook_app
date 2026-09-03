@@ -3,7 +3,7 @@ document.documentElement.dataset.theme =
   localStorage.getItem("theme") || "light";
 const form = document.querySelector("#auth-form");
 let signup = false;
-const showForgotPassword = false;
+const showForgotPassword = true;
 const title = document.querySelector("#form-title"),
   description = document.querySelector("#form-description"),
   button = document.querySelector("#submit-button"),
