@@ -51,7 +51,8 @@ const recovery = new Promise((resolve) => {
   const refreshToken = hashParams.get("refresh_token");
   (async () => {
     if (code) {
-      const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+      const authCode = new URL(window.location.href).searchParams.get("code");
+      const { data, error } = await supabase.auth.exchangeCodeForSession(authCode);
       return finish(data?.session || null, error);
     }
     if (tokenHash) {
