@@ -1,4 +1,4 @@
-import "./app.js";
+import "../core/app.js";
 
 const user = await requireAuth();
 if (!user) throw new Error("Not authenticated");
@@ -26,7 +26,8 @@ const recentTrips = trips.slice(0, 5).map((item) => {
 }).join("") || '<div class="empty">No recent trips.</div>';
 
 await shell("home", `
-  <header class="topbar"><div><div class="eyebrow">${new Date().toLocaleDateString("en-GB", { weekday: "long", day: "2-digit", month: "long", year: "numeric" })}</div><h1>${escapeHtml(greeting)}.</h1></div><div class="top-date"><strong>PERSONAL LOGBOOK</strong>Track the road ahead</div></header>
+  <header class="topbar dashboard-hero"><div><div class="eyebrow">${new Date().toLocaleDateString("en-GB", { weekday: "long", day: "2-digit", month: "long", year: "numeric" })}</div><h1>${escapeHtml(greeting)}.</h1><p class="dashboard-intro">Your driving records, vehicle health, and everyday movement at a glance.</p></div><div class="top-date"><strong>PERSONAL LOGBOOK</strong>Track the road ahead</div></header>
+  <section class="dashboard-actions"><div><span class="eyebrow">Quick actions</span><h2>Keep your logbook current.</h2></div><div class="dashboard-action-links"><a class="btn btn-primary" href="logbook.html">＋ Record fill-up</a><a class="btn btn-secondary" href="trip.html">↗ Log a trip</a><a class="dashboard-action-link" href="vehicles.html">Manage vehicles →</a></div></section>
   <section class="grid stats-grid">
     <div class="card stat"><div class="stat-label">Active vehicles</div><div class="stat-value">${currentVehicles.length}</div><div class="stat-note"><a href="vehicles.html">View vehicles</a></div></div>
     <div class="card stat"><div class="stat-label">Fuel logged</div><div class="stat-value">${liters.toFixed(1)} L</div><div class="stat-note">Across all vehicles</div></div>

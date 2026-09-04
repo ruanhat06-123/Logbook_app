@@ -1,4 +1,4 @@
-import "./app.js";
+import "../core/app.js";
 
 const user = await requireAuth();
 if (!user) throw new Error("Not authenticated");

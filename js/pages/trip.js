@@ -10,12 +10,12 @@
 // Prereqs (expected to exist in your app environment):
 // - shell, supabase, requireAuth, requestServiceNotifications, notifyServiceDue, serviceReminderMarkup
 
-import "./app.js";
+import "../core/app.js";
 import {
   notifyServiceDue,
   requestServiceNotifications,
   serviceReminderMarkup,
-} from "./serviceReminder.js";
+} from "../core/serviceReminder.js";
 
 const user = await requireAuth();
 if (!user) throw new Error("Not authenticated");

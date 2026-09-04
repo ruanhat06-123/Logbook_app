@@ -1,4 +1,29 @@
-import { supabase } from "./supabaseClient.js";
+import { supabase } from "../core/supabaseClient.js";
+
+let deferredInstallPrompt = null;
+const installButton = document.querySelector("#install-app");
+window.addEventListener("beforeinstallprompt", (event) => {
+  event.preventDefault();
+  deferredInstallPrompt = event;
+  installButton.hidden = false;
+});
+installButton.addEventListener("click", async () => {
+  if (!deferredInstallPrompt) return;
+  deferredInstallPrompt.prompt();
+  await deferredInstallPrompt.userChoice;
+  deferredInstallPrompt = null;
+  installButton.hidden = true;
+});
+window.addEventListener("appinstalled", () => {
+  deferredInstallPrompt = null;
+  installButton.hidden = true;
+});
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("../sw.js", { scope: "/" }).catch((error) => {
+    console.warn("LogMate service worker registration failed", error);
+  });
+}
+
 document.documentElement.dataset.theme =
   localStorage.getItem("theme") || "light";
 const form = document.querySelector("#auth-form");

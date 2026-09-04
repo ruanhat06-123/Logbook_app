@@ -251,6 +251,34 @@ body {
   padding: 0 5px;
 }
 .preview-route span:last-child { color: var(--muted); }
+.preview-service {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.preview-service > span {
+  display: grid;
+  place-items: center;
+  width: 25px;
+  height: 25px;
+  border-radius: 50%;
+  color: var(--teal-deep);
+  background: var(--mint);
+  font-weight: 800;
+}
+.preview-service strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+}
+.preview-service b {
+  margin-left: auto;
+  color: var(--teal);
+  font: 500 12px "DM Mono", monospace;
+}
 .landing-overview {
   padding: 88px 0;
   border-top: 1px solid var(--line);
@@ -262,7 +290,7 @@ body {
 }
 .landing-feature-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 28px;
   margin-top: 55px;
 }
@@ -369,13 +397,18 @@ button {
 .nav-settings {
   display: flex;
   align-items: center;
-  justify-content: center;
-  width: 40px;
+  justify-content: flex-start;
+  gap: 12px;
+  width: 100%;
   height: 40px;
   margin: 18px 0 0 8px;
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 7px;
   color: #c4ccda;
+  font-size: 13px;
+  font-weight: 700;
+}
+.nav-settings .nav-icon {
   font-size: 18px;
 }
 .nav-settings:hover,
@@ -504,6 +537,42 @@ h3 {
 .stats-grid {
   grid-template-columns: repeat(4, 1fr);
   margin-bottom: 22px;
+}
+.dashboard-intro {
+  max-width: 500px;
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.dashboard-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 22px;
+  padding: 20px 22px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.dashboard-actions .eyebrow {
+  margin-bottom: 5px;
+}
+.dashboard-actions h2 {
+  font-size: 16px;
+}
+.dashboard-action-links {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.dashboard-action-link {
+  color: var(--teal);
+  font-size: 11px;
+  font-weight: 800;
 }
 .two-col {
   grid-template-columns: 1.15fr 0.85fr;
@@ -843,6 +912,88 @@ h3 {
   padding: 35px 10px;
   font-size: 12px;
 }
+.help-panel {
+  max-width: 860px;
+}
+.help-results {
+  margin-top: 24px;
+}
+.help-item {
+  padding: 16px 0;
+  border-top: 1px solid var(--line);
+}
+.help-item summary {
+  cursor: pointer;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 800;
+}
+.help-item p {
+  max-width: 680px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
+  margin: 12px 0 0;
+}
+.service-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.service-file {
+  border: 0;
+  padding: 0;
+  color: var(--teal);
+  background: transparent;
+  font-size: 11px;
+  font-weight: 800;
+  text-decoration: underline;
+}
+.service-modal {
+  max-height: min(90vh, 760px);
+  overflow-y: auto;
+}
+.service-record-list {
+  max-height: 260px;
+  overflow-y: auto;
+  margin-bottom: 22px;
+}
+.service-report-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin-bottom: 16px;
+}
+.service-record {
+  padding: 14px 0;
+  border-top: 1px solid var(--line);
+}
+.service-record-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+}
+.service-record-head span {
+  color: var(--muted);
+  font: 10px "DM Mono", monospace;
+}
+.service-record p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 9px 0 0;
+}
+.field textarea {
+  width: 100%;
+  resize: vertical;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 11px 12px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+}
 .notice {
   padding: 12px 14px;
   background: #fff4e9;
@@ -1016,6 +1167,13 @@ h3 {
   }
   .two-col {
     grid-template-columns: 1fr;
+  }
+  .dashboard-actions {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .dashboard-action-links {
+    justify-content: flex-start;
   }
   .vehicle-row {
     grid-template-columns: 1fr;

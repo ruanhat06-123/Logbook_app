@@ -1,4 +1,4 @@
-import { supabase } from "./supabaseClient.js";
+import { supabase } from "../core/supabaseClient.js";
 
 document.documentElement.dataset.theme = localStorage.getItem("theme") || "light";
 

@@ -1,6 +1,6 @@
 // report.js
-import "./app.js";
-import { requestServiceNotifications, notifyServiceDue } from "./serviceReminder.js";
+import "../core/app.js";
+import { requestServiceNotifications, notifyServiceDue } from "../core/serviceReminder.js";
 
 const user = await requireAuth();
 if (!user) throw new Error("Not authenticated");

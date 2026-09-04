@@ -2,7 +2,7 @@
   "name": "LogMate",
   "short_name": "LogMate",
   "description": "A personal vehicle, fuel, trip, and service logbook.",
-  "start_url": "/",
+  "start_url": "/html/login.html",
   "scope": "/",
   "display": "standalone",
   "background_color": "#F7F9FB",

@@ -1,10 +1,10 @@
 // logbook.js
-import "./app.js";
+import "../core/app.js";
 import {
   notifyServiceDue,
   requestServiceNotifications,
   serviceReminderMarkup,
-} from "./serviceReminder.js";
+} from "../core/serviceReminder.js";
 
 const user = await requireAuth();
 if (!user) throw new Error("Not authenticated");
@@ -74,7 +74,7 @@ if (user) {
         <div class="field"><label for="previous">Mileage at last fill (km)</label><input id="previous" type="number" step="1" placeholder="Auto-populated from last fill"></div>
         <div class="field"><label for="current">Current mileage (km)</label><input id="current" type="number" step="1" required></div>
         <div class="field"><label for="liters">Fuel amount (litres)</label><input id="liters" type="number" step="0.001" inputmode="decimal" pattern="^\\d+(\\.\\d{1,3})?$" required></div>
-        <div class="field"><label for="price">Price per litre (R)</label><input id="price" type="number" step="0.01" required></div>
+        <div class="field"><label for="price">Price per litre (R)</label><input id="price" type="number" step="0.01" required><small id="price-hint" class="field-help">Checking the latest regional price...</small></div>
 
         <div class="field" id="calculated-total-field">
           <label for="calculated-total-value">Calculated total</label>
@@ -128,6 +128,8 @@ if (user) {
   const currentInput = document.querySelector("#current");
   const litersInput = document.querySelector("#liters");
   const priceInput = document.querySelector("#price");
+  const fuelTypeInput = document.querySelector("#fuel-type");
+  const priceHint = document.querySelector("#price-hint");
   const totalValueEl = document.querySelector("#calculated-total-value");
   const dateInput = document.querySelector("#date");
   const successEl = document.querySelector("#success");
@@ -160,6 +162,39 @@ if (user) {
 
   litersInput.addEventListener("input", updateCalculatedTotal);
   priceInput.addEventListener("input", updateCalculatedTotal);
+
+  let priceChangedByUser = false;
+  priceInput.addEventListener("input", () => {
+    priceChangedByUser = true;
+    priceHint.textContent = "Using your entered price.";
+  });
+
+  async function populateRegionalFuelPrice() {
+    if (priceChangedByUser) return;
+    const locale = navigator.language || "en-ZA";
+    const countryCode = (locale.split("-")[1] || "ZA").toUpperCase();
+    const { data, error } = await supabase
+      .from("regional_fuel_prices")
+      .select("price_per_litre, currency, region, valid_from, source")
+      .eq("country_code", countryCode)
+      .eq("fuel_type", fuelTypeInput.value)
+      .order("valid_from", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error || !data) {
+      priceHint.textContent = "No regional price available. Enter the garage price.";
+      return;
+    }
+    priceInput.value = Number(data.price_per_litre).toFixed(2);
+    priceHint.textContent = `Suggested ${data.currency || "R"} ${Number(data.price_per_litre).toFixed(2)}${data.region ? ` for ${data.region}` : ""}${data.source ? ` · ${data.source}` : ""}. You can change it.`;
+    updateCalculatedTotal();
+  }
+
+  fuelTypeInput.addEventListener("change", () => {
+    priceChangedByUser = false;
+    populateRegionalFuelPrice();
+  });
+  populateRegionalFuelPrice();
 
   // Populate previous mileage from last refuel in car_logbook (or from option dataset if present)
   async function fetchLastFillMileage(vehicleId) {

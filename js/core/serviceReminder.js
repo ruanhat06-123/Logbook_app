@@ -119,6 +119,16 @@ const handleConfirmClick = async (event) => {
       return;
     }
 
+    const { error: historyError } = await supabase.from("service_records").insert({
+      user_id: sessionData.session.user.id,
+      vehicle_id: vehicle.id,
+      service_date: new Date().toISOString().slice(0, 10),
+      mileage: currentOdo,
+      title: "Service completed",
+      notes: "Added from the service reminder.",
+    });
+    if (historyError) console.error("Service history insert error:", historyError);
+
     const reminderEl = document.querySelector(`[data-service-reminder="${vehicleId}"]`);
     if (reminderEl) reminderEl.remove();
 

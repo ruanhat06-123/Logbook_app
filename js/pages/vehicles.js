@@ -1,6 +1,6 @@
 // vehicles.js
-import "./app.js";
-import { notifyServiceDue, requestServiceNotifications, serviceReminderMarkup } from "./serviceReminder.js";
+import "../core/app.js";
+import { notifyServiceDue, requestServiceNotifications, serviceReminderMarkup } from "../core/serviceReminder.js";
 
 const user = await requireAuth();
 if (!user) throw new Error("Not authenticated");
