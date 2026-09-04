@@ -259,6 +259,33 @@ body {
   padding-top: 16px;
   border-top: 1px solid var(--line);
 }
+.preview-live {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 18px;
+  padding: 14px 0 0;
+  border-top: 1px solid var(--line);
+}
+.live-pulse {
+  width: 12px;
+  height: 12px;
+  border: 3px solid var(--mint);
+  border-radius: 50%;
+  box-shadow: 0 0 0 4px rgba(111, 175, 141, 0.15);
+}
+.preview-live strong,
+.preview-live span:last-child {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+}
+.preview-live span:last-child { color: var(--muted); }
+.preview-live b {
+  margin-left: auto;
+  color: var(--coral);
+  font: 500 11px "DM Mono", monospace;
+}
 .preview-service > span {
   display: grid;
   place-items: center;
