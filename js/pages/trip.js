@@ -186,6 +186,12 @@ if (user) {
     <div class="card" style="max-width:760px">
       <div class="notice">Trip distance is calculated from the start and end odometer readings or from the selected start/end locations. Pick a suggestion, choose a previous destination, or open the map to choose a precise point.</div>
 
+      <div class="live-trip-panel">
+        <div><span class="eyebrow">Quick trip</span><h2>Start from your current location.</h2><p class="row-sub">Choose a vehicle, start tracking, and end the trip when you arrive.</p></div>
+        <div class="live-trip-controls"><button id="start-live-trip" class="btn btn-primary" type="button">Start trip</button><button id="end-live-trip" class="btn btn-secondary" type="button" hidden>End trip</button></div>
+        <div id="live-trip-status" class="notice" hidden></div>
+      </div>
+
       <div class="field full" style="margin-bottom:20px">
         <label for="previous-trip">Edit a previous trip</label>
         <select id="previous-trip">
@@ -329,6 +335,81 @@ if (user) {
   let destCoords = null; // [lon, lat]
   let destWasDetectedByGeolocation = false;
   let editingTripId = null;
+  const liveTripStorageKey = `logmate-live-trip-${user.id}`;
+  let liveTrip = JSON.parse(localStorage.getItem(liveTripStorageKey) || "null");
+  const startLiveTripButton = document.querySelector("#start-live-trip");
+  const endLiveTripButton = document.querySelector("#end-live-trip");
+  const liveTripStatus = document.querySelector("#live-trip-status");
+
+  const showLiveTripStatus = (text, isError = false) => {
+    liveTripStatus.hidden = false;
+    liveTripStatus.textContent = text;
+    liveTripStatus.style.color = isError ? "#a85c28" : "";
+  };
+  const getCurrentPosition = () => new Promise((resolve, reject) => {
+    if (!navigator.geolocation) return reject(new Error("Geolocation is not supported by this browser."));
+    navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+  });
+  const syncLiveTripControls = () => {
+    startLiveTripButton.hidden = Boolean(liveTrip);
+    endLiveTripButton.hidden = !liveTrip;
+  };
+  const notifyTripStarted = async () => {
+    if (!("Notification" in window)) return;
+    if (Notification.permission === "default") await Notification.requestPermission();
+    if (Notification.permission !== "granted") return;
+    const registration = "serviceWorker" in navigator ? await navigator.serviceWorker.ready.catch(() => null) : null;
+    if (registration?.showNotification) {
+      await registration.showNotification("Trip started", { body: "LogMate is tracking this trip.", tag: "logmate-live-trip", actions: [{ action: "end-trip", title: "End trip" }] });
+    } else new Notification("Trip started", { body: "LogMate is tracking this trip. Return to the trip page to end it." });
+  };
+  const startLiveTrip = async () => {
+    if (!vehicleSelect.value) return window.alert("Please select a vehicle first.");
+    try {
+      showLiveTripStatus("Getting your starting location…");
+      await populateStartOdometer(vehicleSelect.value);
+      const position = await getCurrentPosition();
+      if (!Number.isFinite(Number(startOdoInput.value))) throw new Error("This vehicle needs a valid current mileage before a trip can start.");
+      liveTrip = { vehicleId: vehicleSelect.value, startedAt: new Date().toISOString(), startOdo: Number(startOdoInput.value), originCoords: [position.coords.longitude, position.coords.latitude] };
+      localStorage.setItem(liveTripStorageKey, JSON.stringify(liveTrip));
+      syncLiveTripControls();
+      showLiveTripStatus("Trip started. You can end it from the notification or this page.");
+      await notifyTripStarted();
+    } catch (err) {
+      showLiveTripStatus(err.message || "Could not get your location.", true);
+    }
+  };
+  const endLiveTrip = async () => {
+    if (!liveTrip) return;
+    endLiveTripButton.disabled = true;
+    try {
+      showLiveTripStatus("Getting your ending location and calculating distance…");
+      const position = await getCurrentPosition();
+      const destinationCoords = [position.coords.longitude, position.coords.latitude];
+      const distanceKm = await calculateDrivingDistanceKm(liveTrip.originCoords, destinationCoords);
+      const endOdo = Math.round(liveTrip.startOdo + distanceKm);
+      const origin = await reverseGeocodeMapbox(liveTrip.originCoords[1], liveTrip.originCoords[0]);
+      const destination = await reverseGeocodeMapbox(destinationCoords[1], destinationCoords[0]);
+      const { error: insertError } = await supabase.from("trips").insert({ vehicle_id: liveTrip.vehicleId, trip_type: document.querySelector("#trip-type").value || "personal", mileage_start: liveTrip.startOdo, mileage_end: endOdo, trip_distance_km: distanceKm, created_at: liveTrip.startedAt, trip_origin: origin, trip_destination: destination, trip_purpose: purposeSelect.value || "other" });
+      if (insertError) throw insertError;
+      const { error: vehicleError } = await supabase.from("vehicles").update({ current_mileage: endOdo }).eq("id", liveTrip.vehicleId).eq("user_id", user.id);
+      if (vehicleError) throw vehicleError;
+      localStorage.removeItem(liveTripStorageKey);
+      liveTrip = null;
+      syncLiveTripControls();
+      showLiveTripStatus(`Trip ended and saved: ${distanceKm.toFixed(1)} km.`);
+    } catch (err) {
+      showLiveTripStatus(err.message || "Could not end the trip.", true);
+    } finally {
+      endLiveTripButton.disabled = false;
+    }
+  };
+  startLiveTripButton.addEventListener("click", startLiveTrip);
+  endLiveTripButton.addEventListener("click", endLiveTrip);
+  navigator.serviceWorker?.addEventListener("message", (event) => {
+    if (event.data?.type === "end-live-trip") endLiveTrip();
+  });
+  syncLiveTripControls();
 
   function resetTripForm() {
     editingTripId = null;

@@ -16,3 +16,16 @@ self.addEventListener("fetch", (event) => {
     fetch(event.request).catch(() => caches.match(event.request)),
   );
 });
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  if (event.action !== "end-trip") return;
+  event.waitUntil(clients.matchAll({ type: "window", includeUncontrolled: true }).then((windows) => {
+    const appWindow = windows.find((window) => "focus" in window);
+    if (appWindow) {
+      appWindow.focus();
+      return appWindow.postMessage({ type: "end-live-trip" });
+    }
+    return clients.openWindow("/html/trip.html");
+  }));
+});
