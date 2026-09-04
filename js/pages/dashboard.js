@@ -13,7 +13,7 @@ const fuelLogs = (logRowsResp.data || []).filter((item) => (item.entry_type || "
 const trips = tripRowsResp.data || [];
 const total = fuelLogs.reduce((sum, item) => sum + Number(item.total_cost || 0), 0);
 const liters = fuelLogs.reduce((sum, item) => sum + Number(item.fuel_amount_liters || 0), 0);
-const distance = fuelLogs.reduce((sum, item) => sum + Math.max(0, Number(item.current_mileage || 0) - Number(item.mileage_last_fill || item.current_mileage || 0)), 0);
+const distance = trips.reduce((sum, item) => sum + Math.max(0, Number(item.trip_distance_km || 0)), 0);
 const hour = new Date().getHours();
 const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
 const recentFuel = fuelLogs.slice(0, 5).map((item) => {
@@ -31,7 +31,7 @@ await shell("home", `
   <section class="grid stats-grid">
     <div class="card stat"><div class="stat-label">Active vehicles</div><div class="stat-value">${currentVehicles.length}</div><div class="stat-note"><a href="vehicles.html">View vehicles</a></div></div>
     <div class="card stat"><div class="stat-label">Fuel logged</div><div class="stat-value">${liters.toFixed(1)} L</div><div class="stat-note">Across all vehicles</div></div>
-    <div class="card stat"><div class="stat-label">Distance logged</div><div class="stat-value">${distance.toLocaleString()} km</div><div class="stat-note">From recorded fill-ups</div></div>
+    <div class="card stat"><div class="stat-label">Distance logged</div><div class="stat-value">${distance.toLocaleString()} km</div><div class="stat-note">From recorded trips</div></div>
     <div class="card stat"><div class="stat-label">Total spend</div><div class="stat-value">${money(total)}</div><div class="stat-note">All recorded time</div></div>
   </section>
   <section class="grid two-col">
