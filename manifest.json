@@ -1,7 +1,7 @@
 {
   "name": "LogMate",
   "short_name": "LogMate",
-  "description": "A personal vehicle, fuel, trip, and service logbook.",
+  "description": "A personal vehicle, fuel, trip, and service logbook with offline-first GPS distance tracking.",
   "start_url": "/html/login.html",
   "scope": "/",
   "display": "standalone",
@@ -9,10 +9,15 @@
   "theme_color": "#3A4A66",
   "icons": [
     {
-      "src": "/logo.svg",
+      "src": "/assets/logo.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any maskable"
     }
-  ]
+  ],
+  "permissions": [
+    "geolocation"
+  ],
+  "categories": ["productivity", "utilities"],
+  "screenshots": []
 }

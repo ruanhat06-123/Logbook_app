@@ -16,6 +16,8 @@ import {
   requestServiceNotifications,
   serviceReminderMarkup,
 } from "../core/serviceReminder.js";
+import { initializeTripUI } from "../core/tripUIIntegration.js";
+import { initializeOfflineSync } from "../core/offlineSync.js";
 
 const user = await requireAuth();
 if (!user) throw new Error("Not authenticated");
@@ -299,6 +301,10 @@ if (user) {
     </div>
   `,
   );
+
+  // Initialize offline-first GPS distance tracking system
+  await initializeOfflineSync();
+  await initializeTripUI();
 
   // ---------- DOM refs ----------
   const vehicleSelect = document.querySelector("#vehicle");

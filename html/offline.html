@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Offline · LogMate</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/logo.svg" />
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    
+    .container {
+      background: white;
+      border-radius: 16px;
+      padding: 40px;
+      max-width: 500px;
+      width: 100%;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      text-align: center;
+    }
+    
+    .icon {
+      font-size: 64px;
+      margin-bottom: 20px;
+      animation: float 3s ease-in-out infinite;
+    }
+    
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-10px); }
+    }
+    
+    h1 {
+      font-size: 28px;
+      color: #1a1a1a;
+      margin-bottom: 12px;
+    }
+    
+    .status {
+      font-size: 16px;
+      color: #666;
+      margin-bottom: 30px;
+      line-height: 1.6;
+    }
+    
+    .info-box {
+      background: #f0f9ff;
+      border-left: 4px solid #0284c7;
+      padding: 16px;
+      border-radius: 8px;
+      text-align: left;
+      margin-bottom: 30px;
+      font-size: 14px;
+      color: #333;
+    }
+    
+    .info-box strong {
+      display: block;
+      margin-bottom: 8px;
+      color: #0284c7;
+    }
+    
+    .tips {
+      text-align: left;
+      background: #fef3c7;
+      border-left: 4px solid #f59e0b;
+      padding: 16px;
+      border-radius: 8px;
+      margin-bottom: 30px;
+      font-size: 14px;
+    }
+    
+    .tips strong {
+      display: block;
+      margin-bottom: 8px;
+      color: #d97706;
+    }
+    
+    .tips ul {
+      margin: 0;
+      padding-left: 20px;
+    }
+    
+    .tips li {
+      margin: 6px 0;
+    }
+    
+    .button-group {
+      display: flex;
+      gap: 12px;
+      flex-direction: column;
+    }
+    
+    button {
+      padding: 12px 24px;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+    
+    .btn-primary {
+      background: #3b82f6;
+      color: white;
+    }
+    
+    .btn-primary:hover {
+      background: #2563eb;
+      transform: translateY(-2px);
+    }
+    
+    .btn-secondary {
+      background: #e5e7eb;
+      color: #1a1a1a;
+    }
+    
+    .btn-secondary:hover {
+      background: #d1d5db;
+      transform: translateY(-2px);
+    }
+    
+    .footer {
+      margin-top: 20px;
+      font-size: 12px;
+      color: #999;
+    }
+    
+    .status-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      border-radius: 6px;
+      color: #dc2626;
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 20px;
+    }
+    
+    .status-indicator::before {
+      content: '●';
+      font-size: 10px;
+      animation: pulse 2s infinite;
+    }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="icon">📡</div>
+    
+    <h1>You're Offline</h1>
+    
+    <div class="status-indicator">
+      No internet connection
+    </div>
+    
+    <p class="status">
+      You don't have an internet connection right now, but the good news is LogMate still works offline!
+    </p>
+    
+    <div class="info-box">
+      <strong>💾 Your data is safe</strong>
+      All your GPS coordinates and trip information are saved locally on your device. Everything will sync automatically when you're back online.
+    </div>
+    
+    <div class="tips">
+      <strong>💡 What you can do right now:</strong>
+      <ul>
+        <li>Start and end trips</li>
+        <li>Track GPS location and distance</li>
+        <li>Save trip details (type, purpose)</li>
+        <li>View cached trip and vehicle data</li>
+        <li>Browse previously loaded pages</li>
+      </ul>
+    </div>
+    
+    <div class="button-group">
+      <button class="btn-primary" onclick="goBack()">← Go Back</button>
+      <button class="btn-secondary" onclick="goHome()">🏠 Home</button>
+    </div>
+    
+    <p class="footer">
+      LogMate will reconnect automatically when your internet returns.
+    </p>
+  </div>
+
+  <script>
+    function goBack() {
+      window.history.back();
+    }
+    
+    function goHome() {
+      window.location.href = '/';
+    }
+    
+    // Monitor for connectivity restoration
+    window.addEventListener('online', () => {
+      showReconnectedMessage();
+    });
+    
+    function showReconnectedMessage() {
+      const message = document.createElement('div');
+      message.style.cssText = `
+        position: fixed;
+        top: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: #10b981;
+        color: white;
+        padding: 16px 24px;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        font-weight: 600;
+        z-index: 10000;
+        animation: slideDown 0.3s ease-out;
+      `;
+      message.textContent = '✓ You\'re back online! Reloading...';
+      document.body.appendChild(message);
+      
+      setTimeout(() => {
+        window.location.reload();
+      }, 1500);
+    }
+    
+    // Add animation
+    const style = document.createElement('style');
+    style.textContent = `
+      @keyframes slideDown {
+        from {
+          opacity: 0;
+          transform: translateX(-50%) translateY(-20px);
+        }
+        to {
+          opacity: 1;
+          transform: translateX(-50%) translateY(0);
+        }
+      }
+    `;
+    document.head.appendChild(style);
+  </script>
+</body>
+</html>

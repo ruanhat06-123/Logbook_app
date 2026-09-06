@@ -1,22 +1,26 @@
 // report.js
 import "../core/app.js";
 import { requestServiceNotifications, notifyServiceDue } from "../core/serviceReminder.js";
+import { getReportDataWithFallback } from "../core/reportCache.js";
 
 const user = await requireAuth();
 if (!user) throw new Error("Not authenticated");
 
 try {
-  // Fetch vehicles and car_logbook entries only
-  const [vehiclesResp, logbookResp] = await Promise.all([
-    supabase.from("vehicles").select("*").order("number_plate"),
-    supabase.from("car_logbook").select("*").order("created_at", { ascending: false }),
-  ]);
+  // Fetch vehicles and car_logbook entries with offline fallback
+  const reportData = await getReportDataWithFallback(supabase);
+  const vehicleRows = reportData.vehicles;
+  const logRows = reportData.logbook;
 
-  if (vehiclesResp.error) console.error("vehicles fetch error:", vehiclesResp.error);
-  if (logbookResp.error) console.error("car_logbook fetch error:", logbookResp.error);
+  // Show offline notification if using cached data
+  if (reportData.isCached) {
+    console.warn("[Report] Using cached data (offline mode)");
+  }
 
-  const vehicleRows = vehiclesResp.data || [];
-  const logRows = logbookResp.data || [];
+  // Show error if no data available
+  if (reportData.error) {
+    console.error("[Report] " + reportData.error);
+  }
 
   const today = new Date();
   const startDate = new Date(today.getFullYear(), 0, 1);
