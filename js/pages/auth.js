@@ -1,5 +1,20 @@
 import { supabase } from "../core/supabaseClient.js";
 
+const isOffline = () => !navigator.onLine;
+
+async function continueWithOfflineSession() {
+  const { data, error } = await supabase.auth.getSession();
+  if (error) throw error;
+  if (!data.session) return false;
+
+  const email = data.session.user?.email;
+  if (email) {
+    document.cookie = `logmate_email=${encodeURIComponent(email)}; Max-Age=31536000; Path=/; SameSite=Lax`;
+  }
+  window.location.href = "dashboard.html";
+  return true;
+}
+
 let deferredInstallPrompt = null;
 const installButton = document.querySelector("#install-app");
 window.addEventListener("beforeinstallprompt", (event) => {
@@ -91,10 +106,36 @@ const applyAuthMode = (isSignup) => {
   switchMode.textContent = signup ? "Sign in instead" : "Create an account";
   forgotPassword.hidden = !showForgotPassword || signup;
 };
-switchMode.addEventListener("click", () => applyAuthMode(!signup));
+const updateOfflineLoginState = () => {
+  const offline = isOffline();
+  if (!signup) {
+    button.textContent = offline ? "Continue offline →" : "Sign in →";
+    description.textContent = offline
+      ? "Continue with your saved account session."
+      : "Enter your account details to continue.";
+  }
+  if (offline && !signup) {
+    notice.hidden = false;
+    notice.textContent = "Offline mode: your account must have been signed in online on this device before.";
+  } else if (!offline && notice.textContent.startsWith("Offline mode:")) {
+    notice.hidden = true;
+  }
+};
+switchMode.addEventListener("click", () => {
+  applyAuthMode(!signup);
+  updateOfflineLoginState();
+});
 applyAuthMode(signup);
+updateOfflineLoginState();
+window.addEventListener("online", updateOfflineLoginState);
+window.addEventListener("offline", updateOfflineLoginState);
 forgotPassword.hidden = !showForgotPassword;
 forgotPassword.addEventListener("click", async () => {
+  if (isOffline()) {
+    notice.hidden = false;
+    notice.textContent = "Password reset requires an internet connection.";
+    return;
+  }
   const email = document.querySelector("#email").value.trim();
   if (!email) {
     notice.hidden = false;
@@ -121,6 +162,28 @@ form.addEventListener("submit", async (event) => {
     notice.textContent =
       "Password must be at least 8 characters and include an uppercase letter, a lowercase letter, and a number.";
     password.focus();
+    button.disabled = false;
+    return;
+  }
+  if (isOffline()) {
+    if (signup) {
+      notice.hidden = false;
+      notice.textContent = "Account creation requires an internet connection.";
+      button.disabled = false;
+      return;
+    }
+
+    try {
+      if (await continueWithOfflineSession()) return;
+      notice.hidden = false;
+      notice.textContent =
+        "You need to sign in online once before you can use LogMate offline.";
+    } catch (error) {
+      console.warn("Offline session could not be restored", error);
+      notice.hidden = false;
+      notice.textContent =
+        "Your saved session could not be restored. Connect to the internet and sign in again.";
+    }
     button.disabled = false;
     return;
   }

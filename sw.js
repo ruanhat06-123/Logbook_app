@@ -9,7 +9,6 @@ const APP_SHELL = [
   "/manifest.json",
   "/html/offline.html",
   // Core app modules
-  "/js/app.js",
   "/js/landing.js",
   "/js/core/app.js",
   "/js/core/env.js",
