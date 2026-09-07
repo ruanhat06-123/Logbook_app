@@ -26,6 +26,19 @@ try {
   const today = new Date();
   const inputDate = (d) => d.toISOString().slice(0, 10);
 
+  // South African tax year for individuals runs 1 March → end of February.
+  const saTaxYearRange = (referenceDate = new Date()) => {
+    const year = referenceDate.getFullYear();
+    const month = referenceDate.getMonth(); // 0-based; 2 = March
+    const startYear = month >= 2 ? year : year - 1;
+    return {
+      start: new Date(startYear, 2, 1), // 1 March
+      end: new Date(startYear + 1, 1, 0), // last day of February
+      label: `${startYear}/${String(startYear + 1).slice(2)}`,
+    };
+  };
+  const currentTaxYear = saTaxYearRange(today);
+
   // CSS: keep single-row layout and ensure small screens show all columns via horizontal scroll
   const printStyles = `
     <style>
@@ -82,10 +95,12 @@ try {
         <div class="field"><label for="vehicle-filter">Vehicle</label><select id="vehicle-filter"><option value="all">All vehicles</option>${vehicleRows.map(v => `<option value="${v.id}">${escapeHtml(v.number_plate || "")}</option>`).join("")}</select></div>
         <div class="field"><label for="trip-filter">Trip type</label><select id="trip-filter"><option value="all">All trips</option><option value="personal">Personal</option><option value="business">Business</option></select></div>
         <div class="field"><label for="purpose-filter">Purpose</label><select id="purpose-filter"><option value="all">All purposes</option><option value="commute">Commute</option><option value="errand">Errand</option><option value="delivery">Delivery</option><option value="client_meeting">Client meeting</option><option value="other">Other</option></select></div>
-        <div class="field"><label for="start-date">From</label><input id="start-date" type="date" value="${inputDate(new Date(today.getFullYear(),0,1))}"></div>
-        <div class="field"><label for="end-date">To</label><input id="end-date" type="date" value="${inputDate(today)}"></div>
+        <div class="field"><label for="start-date">From</label><input id="start-date" type="date" value="${inputDate(currentTaxYear.start)}"></div>
+        <div class="field"><label for="end-date">To</label><input id="end-date" type="date" value="${inputDate(currentTaxYear.end)}"></div>
+        <button id="tax-year-button" class="btn btn-secondary" type="button" title="Use the current SARS tax year (1 Mar – end Feb)">Tax year ${currentTaxYear.label}</button>
         <button id="filter-button" class="btn btn-primary">Update report ↗</button>
         <button id="download-button" class="btn btn-secondary">Download CSV ↓</button>
+        <button id="sars-pdf-button" class="btn btn-secondary">SARS PDF ↓</button>
         <button id="print-button" class="btn btn-secondary">Print report</button>
       </div>
       <div id="report-output"></div>
@@ -112,6 +127,8 @@ try {
   const filterBtn = document.querySelector("#filter-button");
   const printBtn = document.querySelector("#print-button");
   const downloadBtn = document.querySelector("#download-button");
+  const sarsPdfBtn = document.querySelector("#sars-pdf-button");
+  const taxYearBtn = document.querySelector("#tax-year-button");
 
   if (!outputEl) {
     console.error("trip-report: missing #report-output element");
@@ -145,6 +162,18 @@ try {
       const totalDistance = rows.reduce((s, i) => s + Number(i.trip_distance_km || i.distance_km || Math.max(0, Number(i.mileage_end ?? i.mileage_end_km ?? 0) - Number(i.mileage_start ?? i.mileage_start_km ?? 0))), 0);
       const business = rows.filter(i => String(i.trip_type) === "business").reduce((s, i) => s + Number(i.trip_distance_km || i.distance_km || 0), 0);
       const personal = rows.filter(i => String(i.trip_type) === "personal").reduce((s, i) => s + Number(i.trip_distance_km || i.distance_km || 0), 0);
+      const businessPct = totalDistance > 0 ? ((business / totalDistance) * 100).toFixed(1) : "0.0";
+
+      // Annual odometer summary per vehicle for the filtered period
+      const odometerSummary = vehicleRows.map((vehicle) => {
+        const vehicleTrips = rows
+          .filter((item) => normalizeId(item.vehicle_id) === normalizeId(vehicle.id))
+          .sort((a, b) => toISODate(a.created_at).localeCompare(toISODate(b.created_at)));
+        if (!vehicleTrips.length) return null;
+        const opening = Number(vehicleTrips[0].mileage_start ?? vehicleTrips[0].mileage_start_km ?? 0);
+        const closing = Number(vehicleTrips[vehicleTrips.length - 1].mileage_end ?? vehicleTrips[vehicleTrips.length - 1].mileage_end_km ?? 0);
+        return { plate: vehicle.number_plate || "—", opening, closing };
+      }).filter(Boolean);
 
       const tableHeader = `
         <thead><tr>
@@ -187,7 +216,9 @@ try {
           <div class="total-box"><label>Total trips</label><strong style="display:block">${rows.length}</strong></div>
           <div class="total-box"><label>Total distance</label><strong style="display:block">${totalDistance.toLocaleString()} km</strong></div>
           <div class="total-box"><label>Business / personal</label><strong style="display:block">${business.toLocaleString()} / ${personal.toLocaleString()} km</strong></div>
+          <div class="total-box"><label>Business use</label><strong style="display:block">${businessPct}%</strong></div>
         </div>
+        ${odometerSummary.length ? `<div class="notice" style="margin-bottom:12px"><strong>Annual odometer readings:</strong> ${odometerSummary.map((s) => `${s.plate}: ${s.opening.toLocaleString()} km → ${s.closing.toLocaleString()} km`).join(" · ")}</div>` : ""}
         ${rows.length ? `<div class="table-wrap"><table class="table">${tableHeader}<tbody>${rowsHtml}</tbody></table></div>` : `<div class="empty">No trips match this filter.</div>`}
       `;
     } catch (err) {
@@ -198,7 +229,142 @@ try {
 
   filterBtn?.addEventListener("click", draw);
   printBtn?.addEventListener("click", () => window.print());
+  taxYearBtn?.addEventListener("click", () => {
+    const range = saTaxYearRange(new Date());
+    startDateEl.value = inputDate(range.start);
+    endDateEl.value = inputDate(range.end);
+    draw();
+  });
   draw();
+
+  /**
+   * Generate a SARS-compliant PDF logbook: opens a print-ready document in a
+   * new window with all SARS-required fields, annual odometer readings,
+   * business/personal split, and a retention declaration.
+   */
+  sarsPdfBtn?.addEventListener("click", () => {
+    const rows = filteredRows();
+    if (!rows.length) {
+      window.alert("No trips in the selected period to export.");
+      return;
+    }
+
+    const startLabel = startDateEl.value || "—";
+    const endLabel = endDateEl.value || "—";
+    const business = rows.filter((i) => String(i.trip_type) === "business");
+    const personal = rows.filter((i) => String(i.trip_type) === "personal");
+    const businessKm = business.reduce((s, i) => s + Number(i.trip_distance_km || 0), 0);
+    const personalKm = personal.reduce((s, i) => s + Number(i.trip_distance_km || 0), 0);
+    const totalKm = businessKm + personalKm;
+    const businessPct = totalKm > 0 ? ((businessKm / totalKm) * 100).toFixed(1) : "0.0";
+
+    // Annual odometer readings per vehicle
+    const odometerRows = vehicleRows.map((vehicle) => {
+      const vehicleTrips = rows
+        .filter((item) => normalizeId(item.vehicle_id) === normalizeId(vehicle.id))
+        .sort((a, b) => toISODate(a.created_at).localeCompare(toISODate(b.created_at)));
+      if (!vehicleTrips.length) return null;
+      return {
+        plate: vehicle.number_plate || "—",
+        make: `${vehicle.make || ""} ${vehicle.model || ""}`.trim(),
+        opening: Number(vehicleTrips[0].mileage_start ?? 0),
+        closing: Number(vehicleTrips[vehicleTrips.length - 1].mileage_end ?? 0),
+      };
+    }).filter(Boolean);
+
+    const tripRowsHtml = rows.map((item) => {
+      const vehicleLabel = safeVehicle(vehicleRows, item.vehicle_id)?.number_plate || "—";
+      const start = Number(item.mileage_start ?? 0);
+      const end = Number(item.mileage_end ?? 0);
+      const dist = Number(item.trip_distance_km ?? Math.max(0, end - start));
+      return `<tr>
+        <td>${safeEscape(toISODate(item.created_at))}</td>
+        <td>${safeEscape(vehicleLabel)}</td>
+        <td>${safeEscape(item.trip_type || "—")}</td>
+        <td>${safeEscape(item.trip_purpose || item.purpose || "—")}</td>
+        <td>${safeEscape(item.trip_origin || "—")}</td>
+        <td>${safeEscape(item.trip_destination || "—")}</td>
+        <td style="text-align:right">${start.toLocaleString()}</td>
+        <td style="text-align:right">${end.toLocaleString()}</td>
+        <td style="text-align:right">${dist.toLocaleString()}</td>
+      </tr>`;
+    }).join("");
+
+    const odometerHtml = odometerRows.map((o) => `<tr>
+      <td>${safeEscape(o.plate)}</td>
+      <td>${safeEscape(o.make)}</td>
+      <td style="text-align:right">${o.opening.toLocaleString()}</td>
+      <td style="text-align:right">${o.closing.toLocaleString()}</td>
+    </tr>`).join("");
+
+    const documentHtml = `<!doctype html><html><head><title>LogMate SARS Logbook ${safeEscape(startLabel)} – ${safeEscape(endLabel)}</title>
+      <style>
+        body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; color: #111; margin: 24px; }
+        h1 { font-size: 20px; margin: 0 0 4px; } h2 { font-size: 14px; margin: 20px 0 6px; }
+        p { font-size: 11px; color: #444; margin: 2px 0; }
+        table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+        th, td { border: 1px solid #bbb; padding: 4px 6px; font-size: 9.5px; text-align: left; }
+        th { background: #f0f0f0; }
+        .summary { margin: 10px 0; font-size: 11px; }
+        .summary strong { display: inline-block; min-width: 220px; }
+        .footer { margin-top: 18px; font-size: 9px; color: #666; border-top: 1px solid #ccc; padding-top: 6px; }
+        @page { size: A4 landscape; margin: 10mm; }
+      </style></head><body>
+      <h1>Vehicle Logbook — SARS Compliant</h1>
+      <p>Period: <strong>${safeEscape(startLabel)} to ${safeEscape(endLabel)}</strong> · Generated ${safeEscape(new Date().toLocaleDateString("en-GB"))} by LogMate</p>
+
+      <h2>Annual odometer readings</h2>
+      <table><thead><tr><th>Vehicle</th><th>Make / model</th><th>Opening odometer (km)</th><th>Closing odometer (km)</th></tr></thead><tbody>${odometerHtml}</tbody></table>
+
+      <h2>Trip log</h2>
+      <table><thead><tr><th>Date</th><th>Vehicle</th><th>Type</th><th>Business reason</th><th>Origin</th><th>Destination</th><th>Open (km)</th><th>Close (km)</th><th>Distance (km)</th></tr></thead><tbody>${tripRowsHtml}</tbody></table>
+
+      <div class="summary">
+        <div><strong>Total distance:</strong> ${totalKm.toLocaleString()} km</div>
+        <div><strong>Business distance:</strong> ${businessKm.toLocaleString()} km</div>
+        <div><strong>Personal distance:</strong> ${personalKm.toLocaleString()} km</div>
+        <div><strong>Business use:</strong> ${businessPct}%</div>
+      </div>
+
+      <div class="footer">
+        This logbook records the trip date, opening and closing odometer readings, distance travelled, destination, and business reason for each trip, as required by the South African Revenue Service. Records must be retained for a minimum of five years from the date of submission of the relevant tax return.
+      </div>
+      </body></html>`;
+
+    // Print via a hidden iframe — this does not depend on pop-up
+    // permissions, so it works even when window.open is blocked.
+    const iframe = document.createElement("iframe");
+    iframe.style.position = "fixed";
+    iframe.style.right = "0";
+    iframe.style.bottom = "0";
+    iframe.style.width = "0";
+    iframe.style.height = "0";
+    iframe.style.border = "0";
+    iframe.setAttribute("aria-hidden", "true");
+    document.body.appendChild(iframe);
+
+    const cleanup = () => setTimeout(() => iframe.remove(), 1000);
+
+    iframe.onload = () => {
+      try {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+      } catch (err) {
+        console.error("SARS PDF print failed:", err);
+        // Fallback: download the logbook as a standalone HTML file that the
+        // user can open and print/save as PDF manually.
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(new Blob([documentHtml], { type: "text/html" }));
+        link.download = `sars-logbook-${startLabel}-to-${endLabel}.html`;
+        link.click();
+        URL.revokeObjectURL(link.href);
+      } finally {
+        cleanup();
+      }
+    };
+
+    iframe.srcdoc = documentHtml;
+  });
 
   downloadBtn?.addEventListener("click", () => {
     const rows = filteredRows();

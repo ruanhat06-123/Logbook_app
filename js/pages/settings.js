@@ -59,6 +59,21 @@ await shell("settings", `
       <label class="setting-check"><input id="service-notifications" type="checkbox"> Service reminder notifications</label>
       <label class="setting-check"><input id="trip-notifications" type="checkbox"> Live trip tracking notifications <small class="row-sub" style="display:block;margin-top:4px">Shows your current trip distance while you drive, with an End trip action.</small></label>
     </section>
+    <section class="card">
+      <div class="card-head"><h2>Map preferences</h2></div>
+      <div class="field">
+        <label for="map-theme">Map theme</label>
+        <select id="map-theme"><option value="">Follow system</option><option value="light">Light</option><option value="dark">Dark</option></select>
+      </div>
+    </section>
+    <section class="card">
+      <div class="card-head"><h2>Offline data</h2></div>
+      <p class="row-sub">LogMate stores trip coordinates and cached data on this device so you can work offline. Clear it if you're switching accounts or want to free up space.</p>
+      <div class="form-actions" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+        <button id="clear-offline-data" class="btn btn-secondary" type="button">Clear offline data</button>
+      </div>
+      <div id="offline-data-notice" class="notice" hidden></div>
+    </section>
   </div>
 `);
 
@@ -213,6 +228,50 @@ biometricDisableBtn?.addEventListener("click", () => {
 });
 
 refreshBiometricUi();
+
+// ---------- Map theme preference ----------
+const mapThemeSelect = document.querySelector("#map-theme");
+mapThemeSelect.value = localStorage.getItem("mapTheme") || "";
+mapThemeSelect.addEventListener("change", () => {
+  if (mapThemeSelect.value) localStorage.setItem("mapTheme", mapThemeSelect.value);
+  else localStorage.removeItem("mapTheme");
+});
+
+// ---------- Clear offline data ----------
+document.querySelector("#clear-offline-data")?.addEventListener("click", async () => {
+  const confirmed = window.confirm(
+    "Clear all offline data stored on this device?\n\nThis removes cached trip coordinates, pending trip data, geocoded address lookups, and report caches. Your account data in the cloud is not affected.",
+  );
+  if (!confirmed) return;
+
+  try {
+    // Clear IndexedDB-backed local stores
+    const { setLocalStore } = await import("../core/localStore.js");
+    await setLocalStore("tripCoordinates", []);
+    await setLocalStore("cachedTripPayload", null);
+    await setLocalStore("pendingTripData", null);
+    await setLocalStore("activeTripSession", null);
+    await setLocalStore("pendingTrips", []);
+    await setLocalStore("syncedTrips", []);
+
+    // Clear geocode cache entries from localStorage (they are prefixed)
+    const geoKeys = Object.keys(localStorage).filter((key) =>
+      key.startsWith("idb_geocache_"),
+    );
+    geoKeys.forEach((key) => localStorage.removeItem(key));
+
+    // Clear report caches
+    const reportKeys = Object.keys(localStorage).filter((key) =>
+      key.startsWith("idb_report_"),
+    );
+    reportKeys.forEach((key) => localStorage.removeItem(key));
+
+    showNotice("offline-data-notice", "Offline data cleared from this device.");
+  } catch (err) {
+    console.error("Failed to clear offline data:", err);
+    showNotice("offline-data-notice", "Failed to clear offline data. See console for details.", true);
+  }
+});
 
 document.querySelectorAll("[data-password-toggle]").forEach((toggle) => {
   toggle.addEventListener("click", () => {

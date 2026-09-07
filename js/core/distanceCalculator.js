@@ -34,8 +34,11 @@ export function haversineDistance(lat1, lon1, lat2, lon2) {
 
 /**
  * Calculate total distance from an array of GPS coordinates
- * Uses Haversine formula to sum distances between sequential points
- * @param {Array<{latitude, longitude}>} coordinates - Array of coordinate objects
+ * Uses Haversine formula to sum distances between sequential points.
+ * Accuracy-aware: segments shorter than the reported GPS accuracy are
+ * treated as positional jitter and ignored, which keeps the total from
+ * creeping up while stationary or moving slowly.
+ * @param {Array<{latitude, longitude, accuracy?}>} coordinates - Array of coordinate objects
  * @returns {number} Total distance in meters
  */
 export function calculateDistanceFromCoordinates(coordinates) {
@@ -56,6 +59,17 @@ export function calculateDistanceFromCoordinates(coordinates) {
       curr.longitude
     );
 
+    // Ignore segments that are smaller than the GPS accuracy of the points
+    // involved — that movement is indistinguishable from GPS noise.
+    const noiseFloor = Math.max(
+      Number(prev.accuracy) || 0,
+      Number(curr.accuracy) || 0,
+      0
+    );
+    if (noiseFloor > 0 && segmentDistance < noiseFloor) {
+      continue;
+    }
+
     totalDistance += segmentDistance;
   }
 
@@ -63,7 +77,9 @@ export function calculateDistanceFromCoordinates(coordinates) {
 }
 
 /**
- * Format distance for display
+ * Format distance for display, rounded to the nearest whole number.
+ * Distances under 1 km are shown in whole meters; anything above is shown
+ * in whole kilometres.
  * @param {number} meters - Distance in meters
  * @param {boolean} imperial - True for miles, false for km (default: false)
  * @returns {string} Formatted distance string
@@ -71,11 +87,12 @@ export function calculateDistanceFromCoordinates(coordinates) {
 export function formatDistance(meters, imperial = false) {
   if (imperial) {
     const miles = meters / 1609.34;
-    return `${miles.toFixed(2)} mi`;
-  } else {
-    const km = meters / 1000;
-    return `${km.toFixed(2)} km`;
+    if (miles < 0.1) return `${Math.round(meters)} m`;
+    return `${Math.round(miles)} mi`;
   }
+  const km = meters / 1000;
+  if (km < 1) return `${Math.round(meters)} m`;
+  return `${Math.round(km)} km`;
 }
 
 /**

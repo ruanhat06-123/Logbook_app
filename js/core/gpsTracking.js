@@ -25,11 +25,16 @@ const GPS_CONFIG = {
   maximumAge: 0, // No cached positions
 };
 
-// Filter out GPS points with poor accuracy (> 25 meters)
-const ACCURACY_THRESHOLD = 25;
+// Filter out GPS points with poor accuracy (> 15 meters)
+const ACCURACY_THRESHOLD = 15;
 
-// Only record a point if the driver has moved > 10 meters from the last recorded point
-const MINIMUM_DISTANCE_METERS = 10;
+// Only record a point if the driver has moved > 5 meters from the last
+// recorded point (captures more of the actual route without jitter)
+const MINIMUM_DISTANCE_METERS = 5;
+
+// Reject physically impossible GPS jumps — anything implying a speed above
+// 60 m/s (~216 km/h) between fixes is a GPS glitch, not real movement.
+const MAX_REALISTIC_SPEED_MPS = 60;
 
 /**
  * Haversine distance calculator (used locally in this module)
@@ -169,7 +174,7 @@ function handlePositionSuccess(position) {
     return;
   }
 
-  // Filter 2: Drift check - only log if moved > 10 meters from last recorded point
+  // Filter 2: Drift check - only log if moved > 5 meters from last recorded point
   if (lastRecordedCoord !== null) {
     const distance = haversineDistance(
       lastRecordedCoord.latitude,
@@ -181,6 +186,20 @@ function handlePositionSuccess(position) {
     if (distance < MINIMUM_DISTANCE_METERS) {
       log("Position rejected: insufficient distance movement", { distance, threshold: MINIMUM_DISTANCE_METERS });
       return;
+    }
+
+    // Filter 3: Jump check — reject points that imply an impossible speed
+    const elapsedSeconds = (timestamp - lastRecordedCoord.timestamp) / 1000;
+    if (elapsedSeconds > 0) {
+      const impliedSpeed = distance / elapsedSeconds;
+      if (impliedSpeed > MAX_REALISTIC_SPEED_MPS) {
+        warn("Position rejected: impossible speed jump", {
+          distance: distance.toFixed(0),
+          elapsedSeconds,
+          impliedSpeed: impliedSpeed.toFixed(1),
+        });
+        return;
+      }
     }
   }
 
