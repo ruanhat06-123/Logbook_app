@@ -1,6 +1,6 @@
 // trip-report.js
 import "../core/app.js";
-import { requestServiceNotifications, notifyServiceDue } from "../core/serviceReminder.js";
+import { requestServiceNotifications, notifyServiceDue, restorePendingServiceReminders } from "../core/serviceReminder.js";
 
 const user = await requireAuth();
 if (!user) throw new Error("Not authenticated");
@@ -94,6 +94,7 @@ try {
 
   await requestServiceNotifications();
   vehicleRows.forEach(notifyServiceDue);
+  restorePendingServiceReminders(vehicleRows);
 
   // Helpers
   const safeVehicle = globalThis.vehicle || ((list, id) => (list || []).find(v => String(v.id) === String(id)));

@@ -3,6 +3,7 @@ import "../core/app.js";
 import {
   notifyServiceDue,
   requestServiceNotifications,
+  restorePendingServiceReminders,
   serviceReminderMarkup,
 } from "../core/serviceReminder.js";
 
@@ -116,6 +117,7 @@ if (user) {
 
   await requestServiceNotifications();
   vehicleList.forEach(notifyServiceDue);
+  restorePendingServiceReminders(vehicleList);
 
   // DOM refs
   const vehicleSelect = document.querySelector("#vehicle");

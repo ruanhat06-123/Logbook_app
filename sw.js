@@ -1,4 +1,4 @@
-const CACHE_NAME = "logmate-shell-v6";
+const CACHE_NAME = "logmate-shell-v8";
 const OFFLINE_PAGE = "/html/offline.html";
 
 const APP_SHELL = [
@@ -174,13 +174,35 @@ self.addEventListener("fetch", (event) => {
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  if (event.action !== "end-trip") return;
+  const action = event.action;
+  const tag = event.notification?.tag || "";
+  const targetUrl = event.notification?.data?.url;
+
+  // Live trip notification: "End trip" action focuses the app and ends the trip
+  if (action === "end-trip") {
+    event.waitUntil(clients.matchAll({ type: "window", includeUncontrolled: true }).then((windows) => {
+      const appWindow = windows.find((window) => "focus" in window);
+      if (appWindow) {
+        appWindow.focus();
+        return appWindow.postMessage({ type: "end-live-trip" });
+      }
+      return clients.openWindow("/html/trip.html");
+    }));
+    return;
+  }
+
+  // Service reminder notification: open the vehicles page
+  if (tag.startsWith("service-")) {
+    event.waitUntil(
+      clients.openWindow(targetUrl || "/html/vehicles.html")
+    );
+    return;
+  }
+
+  // Default: focus an existing window
   event.waitUntil(clients.matchAll({ type: "window", includeUncontrolled: true }).then((windows) => {
     const appWindow = windows.find((window) => "focus" in window);
-    if (appWindow) {
-      appWindow.focus();
-      return appWindow.postMessage({ type: "end-live-trip" });
-    }
-    return clients.openWindow("/html/trip.html");
+    if (appWindow) return appWindow.focus();
+    return clients.openWindow("/index.html");
   }));
 });

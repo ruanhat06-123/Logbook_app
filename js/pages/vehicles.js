@@ -1,6 +1,6 @@
 // vehicles.js
 import "../core/app.js";
-import { notifyServiceDue, requestServiceNotifications, serviceReminderMarkup } from "../core/serviceReminder.js";
+import { notifyServiceDue, requestServiceNotifications, restorePendingServiceReminders, serviceReminderMarkup } from "../core/serviceReminder.js";
 
 const user = await requireAuth();
 if (!user) throw new Error("Not authenticated");
@@ -139,6 +139,7 @@ if (user) {
 
   await requestServiceNotifications();
   currentVehicles.forEach(notifyServiceDue);
+  restorePendingServiceReminders(currentVehicles);
 
   document.querySelector("#add-vehicle-btn").addEventListener("click", () => {
     const backdrop = document.createElement("div");

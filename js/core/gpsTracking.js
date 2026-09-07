@@ -100,6 +100,8 @@ async function releaseScreenWakeLock() {
 
 /**
  * Start GPS tracking with drift filtering and accuracy validation
+ * Takes a single immediate position fix (no API call) so the trip's start
+ * location is known right away, then keeps recording the route locally.
  * Returns: { success: boolean, message: string }
  */
 export async function startTripTracking() {
@@ -125,6 +127,15 @@ export async function startTripTracking() {
 
     // Request screen wake lock
     await requestScreenWakeLock();
+
+    // Take one immediate position fix (local GPS, no API call) so the
+    // trip's start location is captured even if the first watchPosition
+    // update is delayed.
+    navigator.geolocation.getCurrentPosition(
+      (position) => handlePositionSuccess(position),
+      (err) => handlePositionError(err),
+      GPS_CONFIG
+    );
 
     // Start watching position
     watchId = navigator.geolocation.watchPosition(
@@ -260,13 +271,10 @@ export async function endTripTracking() {
       points: tripPayload.pointCount,
     });
 
-    // Save to local storage as "cached_trip_payload"
+    // Keep only the latest completed trip payload locally; it will be
+    // consumed by the trip form on the trip page. No background ORS
+    // sync queue is maintained here to avoid extra API calls.
     await setLocalStore("cachedTripPayload", tripPayload);
-
-    // Also store in pending trips array for sync queue
-    const pendingTrips = (await getLocalStore("pendingTrips")) || [];
-    pendingTrips.push(tripPayload);
-    await setLocalStore("pendingTrips", pendingTrips);
 
     // Clear the active trip coordinates
     tripCoordinates = [];
@@ -329,7 +337,8 @@ export async function cancelTripTracking() {
 }
 
 /**
- * Clear cached pending trips from local storage
+ * Clear any pending-trip sync queue entries (kept for backwards
+ * compatibility; the queue is no longer written to).
  */
 export async function clearPendingTrips() {
   await setLocalStore("pendingTrips", []);

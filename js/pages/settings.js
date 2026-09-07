@@ -48,6 +48,7 @@ await shell("settings", `
         <select id="default-vehicle"><option value="">Choose when entering a trip or fill-up</option>${vehicleOptions}</select>
       </div>
       <label class="setting-check"><input id="service-notifications" type="checkbox"> Service reminder notifications</label>
+      <label class="setting-check"><input id="trip-notifications" type="checkbox"> Live trip tracking notifications <small class="row-sub" style="display:block;margin-top:4px">Shows your current trip distance while you drive, with an End trip action.</small></label>
     </section>
   </div>
 `);
@@ -77,6 +78,15 @@ serviceNotifications.checked = localStorage.getItem("serviceNotifications") !== 
 serviceNotifications.addEventListener("change", async () => {
   localStorage.setItem("serviceNotifications", serviceNotifications.checked ? "on" : "off");
   if (serviceNotifications.checked && "Notification" in window && Notification.permission === "default") {
+    await Notification.requestPermission();
+  }
+});
+
+const tripNotifications = document.querySelector("#trip-notifications");
+tripNotifications.checked = localStorage.getItem("tripNotifications") !== "off";
+tripNotifications.addEventListener("change", async () => {
+  localStorage.setItem("tripNotifications", tripNotifications.checked ? "on" : "off");
+  if (tripNotifications.checked && "Notification" in window && Notification.permission === "default") {
     await Notification.requestPermission();
   }
 });

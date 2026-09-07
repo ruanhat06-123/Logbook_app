@@ -1,6 +1,6 @@
 // report.js
 import "../core/app.js";
-import { requestServiceNotifications, notifyServiceDue } from "../core/serviceReminder.js";
+import { requestServiceNotifications, notifyServiceDue, restorePendingServiceReminders } from "../core/serviceReminder.js";
 import { getReportDataWithFallback } from "../core/reportCache.js";
 
 const user = await requireAuth();
@@ -102,6 +102,7 @@ try {
 
   await requestServiceNotifications();
   vehicleRows.forEach(notifyServiceDue);
+  restorePendingServiceReminders(vehicleRows);
 
   // Helpers
   const money = (v) =>

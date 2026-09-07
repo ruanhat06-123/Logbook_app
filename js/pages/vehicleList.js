@@ -2,6 +2,7 @@ import "../core/app.js";
 import {
   notifyServiceDue,
   requestServiceNotifications,
+  restorePendingServiceReminders,
   serviceReminderMarkup,
 } from "../core/serviceReminder.js";
 
@@ -62,6 +63,7 @@ await shell("vehicles", `
 
 await requestServiceNotifications();
 currentVehicles.forEach(notifyServiceDue);
+restorePendingServiceReminders(currentVehicles);
 
 document.querySelectorAll("[data-service-history]").forEach((button) => {
   button.addEventListener("click", () => {

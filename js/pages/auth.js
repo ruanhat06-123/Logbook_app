@@ -34,7 +34,11 @@ window.addEventListener("appinstalled", () => {
   installButton.hidden = true;
 });
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("../sw.js", { scope: "/" }).catch((error) => {
+  navigator.serviceWorker.register("../sw.js", { scope: "/" }).then((registration) => {
+    // Check for an updated service worker on every load so stale cached
+    // modules don't keep serving old code.
+    registration.update().catch(() => {});
+  }).catch((error) => {
     console.warn("LogMate service worker registration failed", error);
   });
 }

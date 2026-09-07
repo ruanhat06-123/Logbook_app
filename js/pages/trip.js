@@ -14,10 +14,12 @@ import "../core/app.js";
 import {
   notifyServiceDue,
   requestServiceNotifications,
+  restorePendingServiceReminders,
   serviceReminderMarkup,
 } from "../core/serviceReminder.js";
 import { initializeTripUI } from "../core/tripUIIntegration.js";
 import { initializeOfflineSync } from "../core/offlineSync.js";
+import { getLocalStore, setLocalStore } from "../core/localStore.js";
 
 const user = await requireAuth();
 if (!user) throw new Error("Not authenticated");
@@ -306,6 +308,52 @@ if (user) {
   await initializeOfflineSync();
   await initializeTripUI();
 
+  // If a live trip was ended before this page (re)loaded, restore its data
+  // into the existing trip form so the user can review and save it.
+  try {
+    const pendingLiveTrip = await getLocalStore("pendingTripData");
+    if (pendingLiveTrip) {
+      const vehicleSelectEl = document.querySelector("#vehicle");
+      const dateInputEl = document.querySelector("#date");
+      const startOdoEl = document.querySelector("#start-odo");
+      const endOdoEl = document.querySelector("#end-odo");
+      const originEl = document.querySelector("#origin");
+      const destinationEl = document.querySelector("#destination");
+      const statusEl = document.querySelector("#live-trip-status");
+
+      if (vehicleSelectEl && pendingLiveTrip.vehicleId) {
+        vehicleSelectEl.value = pendingLiveTrip.vehicleId;
+        await populateStartOdometer(pendingLiveTrip.vehicleId);
+      }
+      if (dateInputEl && pendingLiveTrip.startTime) {
+        dateInputEl.value = new Date(pendingLiveTrip.startTime).toISOString().slice(0, 10);
+      }
+      const startOdoVal = Number(startOdoEl?.value);
+      if (Number.isFinite(startOdoVal) && endOdoEl) {
+        endOdoEl.value = Math.round(startOdoVal + pendingLiveTrip.offlineDistance / 1000);
+      }
+      const coords = pendingLiveTrip.rawCoordinates || [];
+      if (originEl && coords.length > 0) {
+        originEl.value =
+          pendingLiveTrip.originLabel ||
+          `${coords[0].latitude.toFixed(6)},${coords[0].longitude.toFixed(6)}`;
+      }
+      if (destinationEl && coords.length > 1) {
+        const last = coords[coords.length - 1];
+        destinationEl.value =
+          pendingLiveTrip.destinationLabel ||
+          `${last.latitude.toFixed(6)},${last.longitude.toFixed(6)}`;
+      }
+      if (statusEl) {
+        statusEl.hidden = false;
+        statusEl.textContent = "Trip restored from previous session — review the details below and save.";
+      }
+      await setLocalStore("pendingTripData", null);
+    }
+  } catch (err) {
+    warn("Failed to restore pending trip data", err);
+  }
+
   // ---------- DOM refs ----------
   const vehicleSelect = document.querySelector("#vehicle");
   const previousTripSelect = document.querySelector("#previous-trip");
@@ -341,81 +389,6 @@ if (user) {
   let destCoords = null; // [lon, lat]
   let destWasDetectedByGeolocation = false;
   let editingTripId = null;
-  const liveTripStorageKey = `logmate-live-trip-${user.id}`;
-  let liveTrip = JSON.parse(localStorage.getItem(liveTripStorageKey) || "null");
-  const startLiveTripButton = document.querySelector("#start-live-trip");
-  const endLiveTripButton = document.querySelector("#end-live-trip");
-  const liveTripStatus = document.querySelector("#live-trip-status");
-
-  const showLiveTripStatus = (text, isError = false) => {
-    liveTripStatus.hidden = false;
-    liveTripStatus.textContent = text;
-    liveTripStatus.style.color = isError ? "#a85c28" : "";
-  };
-  const getCurrentPosition = () => new Promise((resolve, reject) => {
-    if (!navigator.geolocation) return reject(new Error("Geolocation is not supported by this browser."));
-    navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
-  });
-  const syncLiveTripControls = () => {
-    startLiveTripButton.hidden = Boolean(liveTrip);
-    endLiveTripButton.hidden = !liveTrip;
-  };
-  const notifyTripStarted = async () => {
-    if (!("Notification" in window)) return;
-    if (Notification.permission === "default") await Notification.requestPermission();
-    if (Notification.permission !== "granted") return;
-    const registration = "serviceWorker" in navigator ? await navigator.serviceWorker.ready.catch(() => null) : null;
-    if (registration?.showNotification) {
-      await registration.showNotification("Trip started", { body: "LogMate is tracking this trip.", tag: "logmate-live-trip", actions: [{ action: "end-trip", title: "End trip" }] });
-    } else new Notification("Trip started", { body: "LogMate is tracking this trip. Return to the trip page to end it." });
-  };
-  const startLiveTrip = async () => {
-    if (!vehicleSelect.value) return window.alert("Please select a vehicle first.");
-    try {
-      showLiveTripStatus("Getting your starting location…");
-      await populateStartOdometer(vehicleSelect.value);
-      const position = await getCurrentPosition();
-      if (!Number.isFinite(Number(startOdoInput.value))) throw new Error("This vehicle needs a valid current mileage before a trip can start.");
-      liveTrip = { vehicleId: vehicleSelect.value, startedAt: new Date().toISOString(), startOdo: Number(startOdoInput.value), originCoords: [position.coords.longitude, position.coords.latitude] };
-      localStorage.setItem(liveTripStorageKey, JSON.stringify(liveTrip));
-      syncLiveTripControls();
-      showLiveTripStatus("Trip started. You can end it from the notification or this page.");
-      await notifyTripStarted();
-    } catch (err) {
-      showLiveTripStatus(err.message || "Could not get your location.", true);
-    }
-  };
-  const endLiveTrip = async () => {
-    if (!liveTrip) return;
-    endLiveTripButton.disabled = true;
-    try {
-      showLiveTripStatus("Getting your ending location and calculating distance…");
-      const position = await getCurrentPosition();
-      const destinationCoords = [position.coords.longitude, position.coords.latitude];
-      const distanceKm = await calculateDrivingDistanceKm(liveTrip.originCoords, destinationCoords);
-      const endOdo = Math.round(liveTrip.startOdo + distanceKm);
-      const origin = await reverseGeocodeMapbox(liveTrip.originCoords[1], liveTrip.originCoords[0]);
-      const destination = await reverseGeocodeMapbox(destinationCoords[1], destinationCoords[0]);
-      const { error: insertError } = await supabase.from("trips").insert({ vehicle_id: liveTrip.vehicleId, trip_type: document.querySelector("#trip-type").value || "personal", mileage_start: liveTrip.startOdo, mileage_end: endOdo, trip_distance_km: distanceKm, created_at: liveTrip.startedAt, trip_origin: origin, trip_destination: destination, trip_purpose: purposeSelect.value || "other" });
-      if (insertError) throw insertError;
-      const { error: vehicleError } = await supabase.from("vehicles").update({ current_mileage: endOdo }).eq("id", liveTrip.vehicleId).eq("user_id", user.id);
-      if (vehicleError) throw vehicleError;
-      localStorage.removeItem(liveTripStorageKey);
-      liveTrip = null;
-      syncLiveTripControls();
-      showLiveTripStatus(`Trip ended and saved: ${distanceKm.toFixed(1)} km.`);
-    } catch (err) {
-      showLiveTripStatus(err.message || "Could not end the trip.", true);
-    } finally {
-      endLiveTripButton.disabled = false;
-    }
-  };
-  startLiveTripButton.addEventListener("click", startLiveTrip);
-  endLiveTripButton.addEventListener("click", endLiveTrip);
-  navigator.serviceWorker?.addEventListener("message", (event) => {
-    if (event.data?.type === "end-live-trip") endLiveTrip();
-  });
-  syncLiveTripControls();
 
   function resetTripForm() {
     editingTripId = null;
@@ -1505,6 +1478,7 @@ if (user) {
   // ---------- Finalize ----------
   await requestServiceNotifications();
   vehicleList.forEach(notifyServiceDue);
+  restorePendingServiceReminders(vehicleList);
 
   log("trip.js initialized");
 }

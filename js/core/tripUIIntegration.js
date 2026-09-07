@@ -1,25 +1,66 @@
 /**
  * Trip UI Integration Module
- * Orchestrates the complete trip workflow:
- * - Start GPS tracking when user clicks "Start trip"
- * - Monitor GPS tracking in real-time
- * - When trip ends, capture the trip data
- * - Show purpose/type selection modal
- * - Save trip to database and sync when online
+ * Orchestrates the complete live-trip workflow:
+ * - Start GPS tracking when the user clicks "Start trip"
+ * - Show a persistent notification with the current distance while tracking
+ * - When the trip ends, capture the trip data and populate the existing
+ *   trip form on the page (no separate completion form / modal)
+ * - Close the tracking notification when the trip is ended from the app
  */
 
-import { startTripTracking, endTripTracking, getTrackingStatus, getTripCoordinates } from "./gpsTracking.js";
-import { calculateDistanceFromCoordinates, formatDistance } from "./distanceCalculator.js";
+import {
+  startTripTracking,
+  endTripTracking,
+  getTrackingStatus,
+} from "./gpsTracking.js";
+import {
+  calculateDistanceFromCoordinates,
+  formatDistance,
+} from "./distanceCalculator.js";
 import { getLocalStore, setLocalStore } from "./localStore.js";
 
 const log = (...args) => console.log("[Trip UI]", ...args);
 const warn = (...args) => console.warn("[Trip UI]", ...args);
 const error = (...args) => console.error("[Trip UI]", ...args);
 
+const APP_ICON = "/assets/logo.svg";
+const TRACKING_NOTIFICATION_TAG = "logmate-live-trip";
+
+const MAPBOX_TOKEN =
+  (typeof window !== "undefined" && window.__ENV?.VITE_MAPBOX_TOKEN) || "";
+
+/**
+ * Reverse-geocode a single coordinate pair via Mapbox.
+ * Called at most twice per trip (start point + end point), both fired once
+ * in parallel at trip end. Results are cached in local storage keyed by
+ * rounded coordinates so reloads never cost extra calls.
+ * Falls back to raw "lat,lon" text when offline or when no token is set.
+ */
+async function reverseGeocode(lat, lon) {
+  const fallback = `${lat.toFixed(6)},${lon.toFixed(6)}`;
+  if (!MAPBOX_TOKEN || !navigator.onLine) return fallback;
+  const cacheKey = `geocache_${lat.toFixed(4)}_${lon.toFixed(4)}`;
+  try {
+    const cached = await getLocalStore(cacheKey);
+    if (cached) return cached;
+    const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(lon)},${encodeURIComponent(lat)}.json?access_token=${encodeURIComponent(MAPBOX_TOKEN)}&limit=1`;
+    const resp = await fetch(url);
+    if (!resp.ok) return fallback;
+    const data = await resp.json();
+    const label = data?.features?.[0]?.place_name || fallback;
+    await setLocalStore(cacheKey, label);
+    return label;
+  } catch (err) {
+    warn("Reverse geocode failed, using coordinates:", err);
+    return fallback;
+  }
+}
+
 // State
 let activeTripSession = null;
 let trackingStatusInterval = null;
 let pendingTripData = null;
+let swRegistration = null;
 
 /**
  * Initialize trip UI handlers
@@ -28,8 +69,15 @@ let pendingTripData = null;
 export async function initializeTripUI() {
   log("Initializing trip UI");
 
-  // Restore any pending trip from a previous session
-  await restorePendingTripData();
+  // Grab the service worker registration once so we can show/update
+  // notifications without calling navigator.serviceWorker.ready every time.
+  if ("serviceWorker" in navigator) {
+    try {
+      swRegistration = await navigator.serviceWorker.ready;
+    } catch (err) {
+      warn("Service worker not ready for notifications:", err);
+    }
+  }
 
   // Wire up button handlers
   const startBtn = document.getElementById("start-live-trip");
@@ -43,44 +91,22 @@ export async function initializeTripUI() {
     endBtn.addEventListener("click", handleEndTrip);
   }
 
-  // Listen for navigation from notification
-  window.addEventListener("message", (event) => {
-    if (event.data.type === "end-live-trip") {
+  // Listen for "End trip" action from the notification
+  navigator.serviceWorker?.addEventListener("message", (event) => {
+    if (event.data?.type === "end-live-trip") {
       log("Received end-live-trip message from notification");
-      handleEndTripFromNotification();
+      handleEndTrip();
     }
-  });
-
-  // Listen for online event to sync pending trips
-  window.addEventListener("online", () => {
-    log("Online detected, checking for synced trips");
   });
 
   log("Trip UI initialized");
 }
 
 /**
- * Restore pending trip data if the app crashed/reloaded mid-trip
- */
-async function restorePendingTripData() {
-  try {
-    const pending = await getLocalStore("pendingTripData");
-    if (pending) {
-      log("Found pending trip data from previous session", pending);
-      pendingTripData = pending;
-      // Show the completion modal immediately
-      showTripCompletionModal(pending);
-    }
-  } catch (err) {
-    warn("Failed to restore pending trip data:", err);
-  }
-}
-
-/**
  * Handle "Start trip" button click
  */
 async function handleStartTrip(event) {
-  event.preventDefault();
+  event?.preventDefault?.();
 
   const vehicleSelect = document.getElementById("vehicle");
   const vehicleId = vehicleSelect?.value;
@@ -120,11 +146,6 @@ async function handleStartTrip(event) {
       statusDiv.textContent = "🟢 Trip tracking active...";
     }
 
-    // Request notification permission for end-trip notification
-    if ("Notification" in window && Notification.permission === "default") {
-      Notification.requestPermission();
-    }
-
     // Create active trip session
     activeTripSession = {
       vehicleId,
@@ -134,6 +155,9 @@ async function handleStartTrip(event) {
 
     // Save session to local storage in case of crash
     await setLocalStore("activeTripSession", activeTripSession);
+
+    // Show the live tracking notification
+    await showTrackingNotification(0);
   } catch (err) {
     error("Error starting trip:", err);
     alert(`Error starting trip: ${err.message}`);
@@ -141,28 +165,31 @@ async function handleStartTrip(event) {
 }
 
 /**
- * Start polling GPS tracking status for real-time UI updates
+ * Start polling GPS tracking status for real-time UI + notification updates
  */
 function startTrackingStatusPolling() {
   if (trackingStatusInterval) clearInterval(trackingStatusInterval);
 
-  trackingStatusInterval = setInterval(() => {
+  trackingStatusInterval = setInterval(async () => {
     const status = getTrackingStatus();
     const statusDiv = document.getElementById("live-trip-status");
+
+    // Compute the current offline (straight-line) distance of the trip
+    // without hitting any external API.
+    const coordinates = (await getLocalStore("tripCoordinates")) || [];
+    const currentDistance = calculateDistanceFromCoordinates(coordinates);
+    const distanceStr = formatDistance(currentDistance);
 
     if (statusDiv && !statusDiv.hidden) {
       const minutes = Math.floor(status.elapsedSeconds / 60);
       const seconds = Math.floor(status.elapsedSeconds % 60);
       const timeStr = `${minutes}m ${seconds}s`;
-      const pointsStr = `${status.pointCount} points`;
 
-      statusDiv.innerHTML = `🟢 <strong>Tracking active:</strong> ${timeStr} · ${pointsStr}`;
-
-      if (status.lastCoord) {
-        const accuracy = status.lastCoord.accuracy.toFixed(1);
-        statusDiv.innerHTML += ` · Accuracy: ±${accuracy}m`;
-      }
+      statusDiv.innerHTML = `🟢 <strong>Tracking active:</strong> ${timeStr} · ${distanceStr}`;
     }
+
+    // Update the persistent notification with the current distance
+    await showTrackingNotification(currentDistance);
   }, 1000);
 }
 
@@ -177,10 +204,66 @@ function stopTrackingStatusPolling() {
 }
 
 /**
+ * Show or update the persistent tracking notification with the
+ * current trip distance. Uses the service worker when available so the
+ * notification can show an "End trip" action; falls back to a plain
+ * Notification otherwise.
+ */
+async function showTrackingNotification(distanceMeters) {
+  if (localStorage.getItem("tripNotifications") === "off") return;
+  if (!("Notification" in window)) return;
+  if (Notification.permission === "default") {
+    try {
+      await Notification.requestPermission();
+    } catch (err) {
+      warn("Notification permission request failed:", err);
+    }
+  }
+  if (Notification.permission !== "granted") return;
+
+  const options = {
+    body: `LogMate is tracking this trip. Current distance: ${formatDistance(distanceMeters)}`,
+    tag: TRACKING_NOTIFICATION_TAG,
+    icon: APP_ICON,
+    badge: APP_ICON,
+    renotify: false,
+    silent: true,
+    actions: [{ action: "end-trip", title: "End trip" }],
+  };
+
+  try {
+    if (swRegistration?.showNotification) {
+      await swRegistration.showNotification("Trip started", options);
+    } else {
+      new Notification("Trip started", options);
+    }
+  } catch (err) {
+    warn("Failed to show tracking notification:", err);
+  }
+}
+
+/**
+ * Close the live tracking notification (called when the trip is ended
+ * from inside the app).
+ */
+async function closeTrackingNotification() {
+  try {
+    if (swRegistration?.getNotifications) {
+      const notifications = await swRegistration.getNotifications({
+        tag: TRACKING_NOTIFICATION_TAG,
+      });
+      notifications.forEach((n) => n.close());
+    }
+  } catch (err) {
+    warn("Failed to close tracking notification:", err);
+  }
+}
+
+/**
  * Handle "End trip" button click
  */
 async function handleEndTrip(event) {
-  event.preventDefault();
+  event?.preventDefault?.();
 
   try {
     stopTrackingStatusPolling();
@@ -207,9 +290,33 @@ async function handleEndTrip(event) {
     if (statusDiv) statusDiv.hidden = true;
     if (vehicleSelect) vehicleSelect.disabled = false;
 
-    // Calculate offline distance for display
+    // Close the persistent tracking notification since the trip was ended
+    // from within the app.
+    await closeTrackingNotification();
+
+    // Calculate offline distance locally from the recorded GPS route
+    // (no API call — this is the user's actual travelled route).
     const coordinates = result.tripPayload.rawCoordinates;
     const offlineDistance = calculateDistanceFromCoordinates(coordinates);
+
+    // Resolve the start and end locations with at most 2 API calls per
+    // trip (one reverse geocode for each endpoint), fired in parallel.
+    // Results are cached, so a page reload never re-spends the calls.
+    const firstCoord = coordinates[0];
+    const lastCoord = coordinates[coordinates.length - 1];
+    if (statusDiv) {
+      statusDiv.hidden = false;
+      statusDiv.textContent = "Trip ended · resolving start and end locations…";
+    }
+
+    const [originLabel, destinationLabel] = await Promise.all([
+      firstCoord
+        ? reverseGeocode(firstCoord.latitude, firstCoord.longitude)
+        : Promise.resolve(""),
+      lastCoord && coordinates.length > 1
+        ? reverseGeocode(lastCoord.latitude, lastCoord.longitude)
+        : Promise.resolve(""),
+    ]);
 
     // Prepare trip completion data
     const tripData = {
@@ -220,11 +327,12 @@ async function handleEndTrip(event) {
       durationMs: result.tripPayload.durationMs,
       pointCount: result.tripPayload.pointCount,
       offlineDistance,
+      originLabel,
+      destinationLabel,
       rawCoordinates: coordinates,
-      status: "pending-sync",
     };
 
-    // Store pending trip data
+    // Store pending trip data so the trip page can pick it up on reload
     pendingTripData = tripData;
     await setLocalStore("pendingTripData", tripData);
 
@@ -232,11 +340,8 @@ async function handleEndTrip(event) {
     activeTripSession = null;
     await setLocalStore("activeTripSession", null);
 
-    // Show purpose/type selection modal
-    showTripCompletionModal(tripData);
-
-    // Show notification with "End trip" action
-    showEndTripNotification(tripData);
+    // Populate the existing trip form with the recorded data
+    populateTripForm(tripData);
   } catch (err) {
     error("Error ending trip:", err);
     alert(`Error ending trip: ${err.message}`);
@@ -245,417 +350,62 @@ async function handleEndTrip(event) {
 }
 
 /**
- * Handle end-trip message from notification
+ * Populate the existing trip form on the page with data from a completed
+ * live trip. This intentionally reuses the main #trip-form instead of
+ * showing a second, separate "completion" form.
  */
-async function handleEndTripFromNotification() {
-  if (pendingTripData) {
-    log("Showing pending trip completion modal from notification");
-    showTripCompletionModal(pendingTripData);
-  }
-}
+function populateTripForm(tripData) {
+  const vehicleSelect = document.getElementById("vehicle");
+  const dateInput = document.getElementById("date");
+  const startOdoInput = document.getElementById("start-odo");
+  const endOdoInput = document.getElementById("end-odo");
+  const originInput = document.getElementById("origin");
+  const destinationInput = document.getElementById("destination");
 
-/**
- * Show trip completion modal for purpose/type selection
- */
-function showTripCompletionModal(tripData) {
-  // Create modal HTML
-  const modalHTML = `
-    <div id="trip-completion-modal" class="trip-completion-modal" style="
-      position: fixed;
-      inset: 0;
-      background: rgba(0, 0, 0, 0.5);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 9999;
-      padding: 20px;
-    ">
-      <div style="
-        background: white;
-        border-radius: 12px;
-        padding: 24px;
-        max-width: 500px;
-        width: 100%;
-        max-height: 90vh;
-        overflow-y: auto;
-        box-shadow: 0 20px 25px rgba(0, 0, 0, 0.15);
-      ">
-        <h2 style="margin: 0 0 16px 0; font-size: 24px;">Trip completed</h2>
-        
-        <div style="
-          background: #f0f9ff;
-          border-left: 4px solid #0284c7;
-          padding: 12px 16px;
-          border-radius: 6px;
-          margin-bottom: 20px;
-          font-size: 14px;
-        ">
-          <div><strong>Duration:</strong> ${formatDuration(tripData.durationMs)}</div>
-          <div><strong>Points recorded:</strong> ${tripData.pointCount}</div>
-          <div><strong>Offline distance:</strong> ${formatDistance(tripData.offlineDistance)}</div>
-          <div style="font-size: 12px; color: #666; margin-top: 8px;">
-            📍 Syncing distance with road network when online...
-          </div>
-        </div>
-
-        <form id="trip-completion-form" style="display: flex; flex-direction: column; gap: 16px;">
-          <div>
-            <label for="completion-vehicle" style="display: block; font-weight: 500; margin-bottom: 8px;">
-              Vehicle
-            </label>
-            <select id="completion-vehicle" required style="
-              width: 100%;
-              padding: 8px 12px;
-              border: 1px solid #ddd;
-              border-radius: 6px;
-              font-size: 14px;
-            ">
-              <option value="">Select vehicle</option>
-            </select>
-          </div>
-
-          <div>
-            <label for="completion-trip-type" style="display: block; font-weight: 500; margin-bottom: 8px;">
-              Trip type *
-            </label>
-            <select id="completion-trip-type" required style="
-              width: 100%;
-              padding: 8px 12px;
-              border: 1px solid #ddd;
-              border-radius: 6px;
-              font-size: 14px;
-            ">
-              <option value="">Select trip type</option>
-              <option value="personal">Personal</option>
-              <option value="business">Business</option>
-            </select>
-          </div>
-
-          <div>
-            <label for="completion-purpose" style="display: block; font-weight: 500; margin-bottom: 8px;">
-              Purpose *
-            </label>
-            <select id="completion-purpose" required style="
-              width: 100%;
-              padding: 8px 12px;
-              border: 1px solid #ddd;
-              border-radius: 6px;
-              font-size: 14px;
-            ">
-              <option value="">Select purpose</option>
-              <option value="commute">Commute</option>
-              <option value="errand">Errand</option>
-              <option value="delivery">Delivery</option>
-              <option value="client_meeting">Client meeting</option>
-              <option value="other">Other</option>
-            </select>
-          </div>
-
-          <div id="completion-purpose-other-field" style="display: none;">
-            <label for="completion-purpose-other" style="display: block; font-weight: 500; margin-bottom: 8px;">
-              Please describe the purpose
-            </label>
-            <input id="completion-purpose-other" type="text" maxlength="200" placeholder="Describe the purpose" style="
-              width: 100%;
-              padding: 8px 12px;
-              border: 1px solid #ddd;
-              border-radius: 6px;
-              font-size: 14px;
-              box-sizing: border-box;
-            " />
-          </div>
-
-          <div>
-            <label for="completion-notes" style="display: block; font-weight: 500; margin-bottom: 8px;">
-              Notes (optional)
-            </label>
-            <textarea id="completion-notes" maxlength="500" placeholder="Add any additional notes..." style="
-              width: 100%;
-              padding: 8px 12px;
-              border: 1px solid #ddd;
-              border-radius: 6px;
-              font-size: 14px;
-              font-family: inherit;
-              box-sizing: border-box;
-              resize: vertical;
-              min-height: 80px;
-            "></textarea>
-          </div>
-
-          <div style="display: flex; gap: 12px; margin-top: 20px;">
-            <button type="button" id="trip-completion-cancel" class="btn btn-secondary" style="
-              flex: 1;
-              padding: 10px 16px;
-              border: 1px solid #ddd;
-              background: #f3f4f6;
-              border-radius: 6px;
-              cursor: pointer;
-              font-weight: 500;
-            ">
-              Cancel
-            </button>
-            <button type="submit" class="btn btn-primary" style="
-              flex: 1;
-              padding: 10px 16px;
-              background: #2563eb;
-              color: white;
-              border: none;
-              border-radius: 6px;
-              cursor: pointer;
-              font-weight: 500;
-            ">
-              Save trip
-            </button>
-          </div>
-        </form>
-
-        <div id="trip-completion-error" style="
-          color: #dc2626;
-          font-size: 14px;
-          margin-top: 12px;
-          display: none;
-        "></div>
-      </div>
-    </div>
-  `;
-
-  // Remove any existing modal
-  const existing = document.getElementById("trip-completion-modal");
-  if (existing) existing.remove();
-
-  // Insert modal
-  document.body.insertAdjacentHTML("beforeend", modalHTML);
-
-  // Populate vehicle select
-  populateVehicleSelect("completion-vehicle", tripData.vehicleId);
-
-  // Wire up form handlers
-  const form = document.getElementById("trip-completion-form");
-  const purposeSelect = document.getElementById("completion-purpose");
-  const purposeOtherField = document.getElementById("completion-purpose-other-field");
-  const cancelBtn = document.getElementById("trip-completion-cancel");
-
-  // Show/hide "other" purpose field
-  if (purposeSelect) {
-    purposeSelect.addEventListener("change", (e) => {
-      if (purposeOtherField) {
-        purposeOtherField.style.display = e.target.value === "other" ? "block" : "none";
-      }
-    });
+  // Vehicle
+  if (vehicleSelect && tripData.vehicleId) {
+    vehicleSelect.value = tripData.vehicleId;
   }
 
-  // Cancel button
-  if (cancelBtn) {
-    cancelBtn.addEventListener("click", (e) => {
-      e.preventDefault();
-      const modal = document.getElementById("trip-completion-modal");
-      if (modal) modal.remove();
-    });
+  // Date
+  if (dateInput && tripData.startTime) {
+    dateInput.value = new Date(tripData.startTime).toISOString().slice(0, 10);
   }
 
-  // Form submission
-  if (form) {
-    form.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      await handleTripCompletion(tripData, form);
-    });
+  // Odometer readings. Start odometer comes from the vehicle's current
+  // mileage (already auto-populated by the page); end odometer is the
+  // start plus the recorded straight-line distance.
+  const startOdo = Number(startOdoInput?.value);
+  if (Number.isFinite(startOdo) && endOdoInput) {
+    const distanceKm = tripData.offlineDistance / 1000;
+    endOdoInput.value = Math.round(startOdo + distanceKm);
   }
-}
 
-/**
- * Populate vehicle select dropdown
- */
-async function populateVehicleSelect(selectId, selectedVehicleId = null) {
-  const select = document.getElementById(selectId);
-  if (!select) return;
-
-  try {
-    const { data: vehicles } = await supabase
-      .from("vehicles")
-      .select("id, number_plate, make, model")
-      .order("number_plate");
-
-    if (vehicles && vehicles.length > 0) {
-      vehicles.forEach((vehicle) => {
-        const option = document.createElement("option");
-        option.value = vehicle.id;
-        option.textContent = `${vehicle.number_plate} · ${vehicle.make} ${vehicle.model}`;
-        if (selectedVehicleId === vehicle.id) {
-          option.selected = true;
-        }
-        select.appendChild(option);
-      });
-    }
-  } catch (err) {
-    error("Failed to populate vehicle select:", err);
+  // Origin / destination: use the reverse-geocoded place names resolved at
+  // trip end (falling back to raw coordinates when offline).
+  const coords = tripData.rawCoordinates || [];
+  if (originInput && coords.length > 0) {
+    const first = coords[0];
+    originInput.value =
+      tripData.originLabel ||
+      `${first.latitude.toFixed(6)},${first.longitude.toFixed(6)}`;
   }
-}
-
-/**
- * Handle trip completion form submission
- */
-async function handleTripCompletion(tripData, form) {
-  try {
-    const vehicleId = form.querySelector("#completion-vehicle").value;
-    const tripType = form.querySelector("#completion-trip-type").value;
-    const purpose = form.querySelector("#completion-purpose").value;
-    const purposeOther = form.querySelector("#completion-purpose-other").value;
-    const notes = form.querySelector("#completion-notes").value;
-
-    if (!vehicleId || !tripType || !purpose) {
-      alert("Please fill in all required fields");
-      return;
-    }
-
-    // Show saving state
-    const submitBtn = form.querySelector("button[type='submit']");
-    const originalText = submitBtn.textContent;
-    submitBtn.disabled = true;
-    submitBtn.textContent = "Saving...";
-
-    // Build trip record
-    const tripRecord = {
-      vehicle_id: vehicleId,
-      trip_type: tripType,
-      purpose,
-      purpose_other: purpose === "other" ? purposeOther : null,
-      notes,
-      trip_origin: "GPS Start",
-      trip_destination: "GPS End",
-      distance_offline: tripData.offlineDistance / 1000, // Convert to km
-      distance_snapped: null, // Will be updated after sync
-      duration_ms: tripData.durationMs,
-      point_count: tripData.pointCount,
-      raw_coordinates: tripData.rawCoordinates,
-      status: "pending-sync",
-      created_at: new Date().toISOString(),
-    };
-
-    // Save to database
-    const { data, error: dbError } = await supabase
-      .from("trips")
-      .insert([tripRecord])
-      .select();
-
-    if (dbError) {
-      throw dbError;
-    }
-
-    log("Trip saved to database", data);
-
-    // Update pending trip data with DB ID
-    if (data && data[0]) {
-      const savedTrip = data[0];
-      tripData.tripRecordId = savedTrip.id;
-      tripData.tripRecord = savedTrip;
-      await setLocalStore("pendingTripData", tripData);
-    }
-
-    // Show success message
-    const modal = document.getElementById("trip-completion-modal");
-    if (modal) {
-      modal.innerHTML = `
-        <div style="
-          background: white;
-          border-radius: 12px;
-          padding: 24px;
-          max-width: 500px;
-          width: 100%;
-          text-align: center;
-        ">
-          <h2 style="margin: 0 0 16px 0; font-size: 24px;">✓ Trip saved</h2>
-          <p style="color: #666; margin: 0 0 20px 0;">
-            Your trip has been saved successfully. 
-            <br/><br/>
-            ${navigator.onLine ? "Distance is being synced with the road network..." : "It will sync to the road network when you're online."}
-          </p>
-          <button onclick="document.getElementById('trip-completion-modal').remove()" class="btn btn-primary" style="
-            padding: 10px 24px;
-            background: #2563eb;
-            color: white;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            font-weight: 500;
-          ">
-            Done
-          </button>
-        </div>
-      `;
-    }
-
-    // Clear pending trip data
-    pendingTripData = null;
-    await setLocalStore("pendingTripData", null);
-
-    // Reset form
-    form.reset();
-  } catch (err) {
-    error("Error saving trip:", err);
-    const errorDiv = form.querySelector("#trip-completion-error");
-    if (errorDiv) {
-      errorDiv.style.display = "block";
-      errorDiv.textContent = `Error: ${err.message}`;
-    }
-    const submitBtn = form.querySelector("button[type='submit']");
-    submitBtn.disabled = false;
-    submitBtn.textContent = "Save trip";
+  if (destinationInput && coords.length > 1) {
+    const last = coords[coords.length - 1];
+    destinationInput.value =
+      tripData.destinationLabel ||
+      `${last.latitude.toFixed(6)},${last.longitude.toFixed(6)}`;
   }
-}
 
-/**
- * Show native notification with "End trip" action
- */
-function showEndTripNotification(tripData) {
-  if ("Notification" in window && Notification.permission === "granted") {
-    try {
-      const notification = new Notification("LogMate Trip Complete", {
-        body: `Trip complete: ${formatDistance(tripData.offlineDistance)}`,
-        icon: "/assets/logo.svg",
-        badge: "/assets/logo.svg",
-        tag: "trip-complete",
-        requireInteraction: true,
-        actions: [
-          { action: "complete", title: "Complete trip details" },
-          { action: "dismiss", title: "Dismiss" },
-        ],
-      });
-
-      notification.addEventListener("click", () => {
-        window.focus();
-        showTripCompletionModal(tripData);
-        notification.close();
-      });
-
-      notification.addEventListener("action", (event) => {
-        if (event.action === "complete") {
-          window.focus();
-          showTripCompletionModal(tripData);
-        }
-        notification.close();
-      });
-    } catch (err) {
-      warn("Failed to show notification:", err);
-    }
+  // Let the user know the form was populated from the live trip
+  const statusDiv = document.getElementById("live-trip-status");
+  if (statusDiv) {
+    statusDiv.hidden = false;
+    statusDiv.textContent = `Trip ended · ${formatDistance(tripData.offlineDistance)} recorded — review the details below and save.`;
   }
-}
 
-/**
- * Format duration in milliseconds to readable string
- */
-function formatDuration(ms) {
-  const totalSeconds = Math.floor(ms / 1000);
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-
-  if (hours > 0) {
-    return `${hours}h ${minutes}m ${seconds}s`;
-  } else if (minutes > 0) {
-    return `${minutes}m ${seconds}s`;
-  } else {
-    return `${seconds}s`;
-  }
+  // Scroll the form into view so the user can complete the remaining fields
+  document.getElementById("trip-form")?.scrollIntoView({ behavior: "smooth" });
 }
 
 export default {
