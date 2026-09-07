@@ -1,4 +1,4 @@
-const CACHE_NAME = "logmate-shell-v13";
+const CACHE_NAME = "logmate-shell-v15";
 const OFFLINE_PAGE = "/html/offline.html";
 
 const APP_SHELL = [
@@ -21,6 +21,7 @@ const APP_SHELL = [
   "/js/core/offlineIndicator.js",
   "/js/core/tripUIIntegration.js",
   "/js/core/reportCache.js",
+  "/js/core/analytics.js",
   // Page modules
   "/js/pages/auth.js",
   "/js/pages/dashboard.js",
@@ -34,6 +35,7 @@ const APP_SHELL = [
   "/js/pages/help.js",
   "/js/pages/resetPassword.js",
   "/js/pages/vehicleList.js",
+  "/js/pages/analytics.js",
   // HTML pages for offline access
   "/html/login.html",
   "/html/dashboard.html",
@@ -45,6 +47,7 @@ const APP_SHELL = [
   "/html/report.html",
   "/html/settings.html",
   "/html/help.html",
+  "/html/analytics.html",
   "/html/reset-password.html",
 ];
 

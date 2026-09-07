@@ -1,6 +1,7 @@
 // trip-report.js
 import "../core/app.js";
 import { requestServiceNotifications, notifyServiceDue, restorePendingServiceReminders } from "../core/serviceReminder.js";
+import { computeAnalytics, getCachedAnalytics } from "../core/analytics.js";
 
 const user = await requireAuth();
 if (!user) throw new Error("Not authenticated");
@@ -15,6 +16,27 @@ try {
 
   const vehicleRows = vehiclesResp.data || [];
   const tripRows = (tripsResp.data && tripsResp.data.length) ? tripsResp.data : (logbookTripsResp.data || []);
+
+  // Compute analytics so anomalies can be highlighted in exports. Fall back
+  // to cached results when offline.
+  let analyticsResult = null;
+  try {
+    const fuelResp = await supabase.from("car_logbook").select("*").eq("entry_type", "refuel");
+    analyticsResult = await computeAnalytics({
+      vehicles: vehicleRows,
+      trips: tripRows,
+      fuelEntries: fuelResp.data || [],
+    });
+  } catch (analyticsErr) {
+    console.warn("Analytics unavailable for trip report:", analyticsErr);
+    analyticsResult = await getCachedAnalytics();
+  }
+  const anomalousTripIds = new Set(
+    (analyticsResult?.anomalies?.trips || []).map((a) => String(a.tripId)),
+  );
+  const tripAnomalyById = new Map(
+    (analyticsResult?.anomalies?.trips || []).map((a) => [String(a.tripId), a]),
+  );
 
   const toISODate = (val) => {
     if (!val) return "";
@@ -186,6 +208,7 @@ try {
           <th>Start odometer</th>
           <th>End odometer</th>
           <th>Distance (km)</th>
+          <th>Flag</th>
         </tr></thead>`;
 
       const rowsHtml = rows.map((item) => {
@@ -197,8 +220,12 @@ try {
         const purposeLabel = safeEscape(item.trip_purpose || item.purpose || "—");
         const origin = safeEscape(item.trip_origin || item.origin || item.start_location || "—");
         const destination = safeEscape(item.trip_destination || item.destination || item.end_location || "—");
+        const anomaly = tripAnomalyById.get(String(item.id));
+        const flagCell = anomaly
+          ? `<span title="${safeEscape(anomaly.message)}" style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;background:#fdecea;color:#7b241c">⚠ ${anomaly.deviationPct > 0 ? "+" : ""}${anomaly.deviationPct}%</span>`
+          : "";
 
-        return `<tr>
+        return `<tr${anomaly ? ' style="background:rgba(192,57,43,0.07)"' : ""}>
           <td class="mono">${safeEscape(dateLabel)}</td>
           <td><strong>${safeEscape(vehicleLabel)}</strong></td>
           <td>${safeEscape(item.trip_type || "—")}</td>
@@ -208,6 +235,7 @@ try {
           <td class="mono">${start.toLocaleString()} km</td>
           <td class="mono">${end.toLocaleString()} km</td>
           <td class="mono">${distNum.toLocaleString()} km</td>
+          <td>${flagCell}</td>
         </tr>`;
       }).join("");
 
@@ -277,7 +305,8 @@ try {
       const start = Number(item.mileage_start ?? 0);
       const end = Number(item.mileage_end ?? 0);
       const dist = Number(item.trip_distance_km ?? Math.max(0, end - start));
-      return `<tr>
+      const anomaly = tripAnomalyById.get(String(item.id));
+      return `<tr${anomaly ? ' style="background:#fdecea"' : ""}>
         <td>${safeEscape(toISODate(item.created_at))}</td>
         <td>${safeEscape(vehicleLabel)}</td>
         <td>${safeEscape(item.trip_type || "—")}</td>
@@ -287,6 +316,7 @@ try {
         <td style="text-align:right">${start.toLocaleString()}</td>
         <td style="text-align:right">${end.toLocaleString()}</td>
         <td style="text-align:right">${dist.toLocaleString()}</td>
+        <td>${anomaly ? `⚠ ${anomaly.deviationPct > 0 ? "+" : ""}${anomaly.deviationPct}% vs avg` : ""}</td>
       </tr>`;
     }).join("");
 
@@ -317,7 +347,7 @@ try {
       <table><thead><tr><th>Vehicle</th><th>Make / model</th><th>Opening odometer (km)</th><th>Closing odometer (km)</th></tr></thead><tbody>${odometerHtml}</tbody></table>
 
       <h2>Trip log</h2>
-      <table><thead><tr><th>Date</th><th>Vehicle</th><th>Type</th><th>Business reason</th><th>Origin</th><th>Destination</th><th>Open (km)</th><th>Close (km)</th><th>Distance (km)</th></tr></thead><tbody>${tripRowsHtml}</tbody></table>
+      <table><thead><tr><th>Date</th><th>Vehicle</th><th>Type</th><th>Business reason</th><th>Origin</th><th>Destination</th><th>Open (km)</th><th>Close (km)</th><th>Distance (km)</th><th>Anomaly</th></tr></thead><tbody>${tripRowsHtml}</tbody></table>
 
       <div class="summary">
         <div><strong>Total distance:</strong> ${totalKm.toLocaleString()} km</div>
@@ -370,7 +400,7 @@ try {
     const rows = filteredRows();
     const header = [
       "Date","Vehicle","Trip type","Purpose","Origin","Destination",
-      "Start odometer (km)","End odometer (km)","Distance (km)"
+      "Start odometer (km)","End odometer (km)","Distance (km)","Anomaly"
     ];
 
     const csvRows = [
@@ -379,6 +409,7 @@ try {
         const date = toISODate(item.created_at);
         const vehicleLabel = safeVehicle(vehicleRows, item.vehicle_id)?.number_plate || "";
         const dist = item.trip_distance_km ?? item.distance_km ?? Math.max(0, Number(item.mileage_end ?? item.mileage_end_km ?? 0) - Number(item.mileage_start ?? item.mileage_start_km ?? 0));
+        const anomaly = tripAnomalyById.get(String(item.id));
         return [
           date,
           vehicleLabel,
@@ -389,6 +420,7 @@ try {
           item.mileage_start ?? item.mileage_start_km ?? "",
           item.mileage_end ?? item.mileage_end_km ?? "",
           dist,
+          anomaly ? `ANOMALY: ${anomaly.deviationPct > 0 ? "+" : ""}${anomaly.deviationPct}% vs ${anomaly.averageKm} km avg` : "",
         ];
       })
     ];

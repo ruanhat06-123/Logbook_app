@@ -6,6 +6,7 @@ import {
   restorePendingServiceReminders,
   serviceReminderMarkup,
 } from "../core/serviceReminder.js";
+import { getRegionalFuelPrice, detectCountryCode } from "../core/fuelPrice.js";
 
 const user = await requireAuth();
 if (!user) throw new Error("Not authenticated");
@@ -173,22 +174,19 @@ if (user) {
 
   async function populateRegionalFuelPrice() {
     if (priceChangedByUser) return;
-    const locale = navigator.language || "en-ZA";
-    const countryCode = (locale.split("-")[1] || "ZA").toUpperCase();
-    const { data, error } = await supabase
-      .from("regional_fuel_prices")
-      .select("price_per_litre, currency, region, valid_from, source")
-      .eq("country_code", countryCode)
-      .eq("fuel_type", fuelTypeInput.value)
-      .order("valid_from", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (error || !data) {
+    const countryCode = detectCountryCode();
+    const result = await getRegionalFuelPrice({
+      supabase,
+      countryCode,
+      fuelType: fuelTypeInput.value,
+    });
+    if (result.price === null) {
       priceHint.textContent = "No regional price available. Enter the garage price.";
       return;
     }
-    priceInput.value = Number(data.price_per_litre).toFixed(2);
-    priceHint.textContent = `Suggested ${data.currency || "R"} ${Number(data.price_per_litre).toFixed(2)}${data.region ? ` for ${data.region}` : ""}${data.source ? ` · ${data.source}` : ""}. You can change it.`;
+    priceInput.value = Number(result.price).toFixed(2);
+    const cacheNote = result.fromCache ? " · last known price" : "";
+    priceHint.textContent = `Suggested ${result.currency || "R"} ${Number(result.price).toFixed(2)}${result.region ? ` for ${result.region}` : ""}${result.source ? ` · ${result.source}` : ""}${cacheNote}. You can change it.`;
     updateCalculatedTotal();
   }
 

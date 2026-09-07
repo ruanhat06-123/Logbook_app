@@ -1507,3 +1507,157 @@ h3 {
   #map-search-results { display:none; }
   #map-modal { height: 88%; }
 }
+
+/* ============================================================
+   Mobile polish — touch targets, readable layouts, small screens
+   ============================================================ */
+
+/* Larger, easier-to-tap controls everywhere */
+@media (max-width: 900px) {
+  .btn {
+    min-height: 46px;
+    padding: 12px 18px;
+    font-size: 15px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .btn-small {
+    min-height: 42px;
+    padding: 10px 14px;
+    font-size: 14px;
+  }
+  .icon-button {
+    min-width: 42px;
+    min-height: 42px;
+  }
+  .field input,
+  .field select,
+  .field textarea {
+    min-height: 46px;
+    font-size: 16px; /* prevents iOS auto-zoom on focus */
+  }
+  /* Settings & analytics grids collapse to one column */
+  .grid.two-col,
+  .analytics-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .analytics-card {
+    grid-column: auto !important;
+  }
+  /* Anomaly and stat rows wrap nicely */
+  .anomaly-item {
+    flex-direction: column;
+    gap: 6px;
+  }
+  .stat-row {
+    flex-wrap: wrap;
+  }
+  .stat-row strong {
+    white-space: normal;
+    text-align: left;
+  }
+  /* Gauge stacks vertically */
+  .gauge-wrap {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .gauge-wrap svg {
+    margin: 0 auto;
+  }
+  /* Report controls stack */
+  .report-controls {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .report-controls .field {
+    min-width: 0;
+  }
+  /* Service reminder buttons full width */
+  .service-reminder .btn {
+    width: 100%;
+  }
+  /* Form action buttons stack full width */
+  .form-actions .btn,
+  .form-actions a.btn {
+    flex: 1 1 100%;
+  }
+  /* Notices / banners easier to read */
+  .alert-banner,
+  .notice,
+  .service-reminder {
+    font-size: 14px;
+    padding: 12px 14px;
+  }
+}
+
+@media (max-width: 520px) {
+  .main {
+    padding: 22px 14px 40px;
+  }
+  .report-controls {
+    grid-template-columns: 1fr;
+  }
+  .btn,
+  .btn-small {
+    width: 100%;
+  }
+  /* Nav pills get slightly larger tap areas */
+  .nav a {
+    padding: 12px 14px;
+    min-height: 44px;
+    font-size: 14px;
+  }
+  /* Modal fills the screen with safe padding */
+  .modal-backdrop {
+    padding: 10px;
+  }
+  .modal {
+    padding: 18px;
+    max-height: calc(100vh - 20px);
+    overflow-y: auto;
+    border-radius: 14px;
+  }
+  /* Preview/landing type scales down a touch more */
+  .landing-hero h1 {
+    font-size: 40px;
+  }
+  .auth-copy h1 {
+    font-size: 34px;
+  }
+}
+
+/* Extra-small devices */
+@media (max-width: 360px) {
+  .main {
+    padding: 18px 10px 36px;
+  }
+  .landing-hero h1 {
+    font-size: 34px;
+  }
+  h1 {
+    font-size: 26px;
+  }
+  .card {
+    padding: 14px;
+  }
+}
+
+/* Make sure tables that must scroll do so smoothly on touch */
+.table-wrap {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Safe-area padding for notched phones (iPhone X+) */
+@supports (padding: env(safe-area-inset-bottom)) {
+  .sidebar,
+  .main {
+    padding-bottom: calc(45px + env(safe-area-inset-bottom));
+  }
+  @media (max-width: 900px) {
+    .nav {
+      padding-bottom: calc(2px + env(safe-area-inset-bottom));
+    }
+  }
+}
