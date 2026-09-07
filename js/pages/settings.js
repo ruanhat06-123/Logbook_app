@@ -38,6 +38,15 @@ await shell("settings", `
       <button id="settings-theme-toggle" class="btn btn-secondary" type="button"></button>
     </section>
     <section class="card">
+      <div class="card-head"><h2>Biometric sign-in</h2></div>
+      <p class="row-sub">Unlock your LogMate session on this device with your fingerprint or face instead of typing your password.</p>
+      <div id="biometric-status" class="notice" hidden></div>
+      <div class="form-actions" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+        <button id="biometric-enable" class="btn btn-primary" type="button" hidden>Enable biometrics →</button>
+        <button id="biometric-disable" class="btn btn-secondary" type="button" hidden>Disable biometrics</button>
+      </div>
+    </section>
+    <section class="card">
       <div class="card-head"><h2>Popular settings</h2></div>
       <div class="field">
         <label for="default-trip-type">Default trip type</label>
@@ -90,6 +99,120 @@ tripNotifications.addEventListener("change", async () => {
     await Notification.requestPermission();
   }
 });
+
+// ---------- Biometric sign-in management ----------
+const BIOMETRIC_KEY = "logmateBiometricCredential";
+const biometricStatus = document.querySelector("#biometric-status");
+const biometricEnableBtn = document.querySelector("#biometric-enable");
+const biometricDisableBtn = document.querySelector("#biometric-disable");
+
+const getBiometricRegistration = () => {
+  try {
+    return JSON.parse(localStorage.getItem(BIOMETRIC_KEY) || "null");
+  } catch {
+    return null;
+  }
+};
+
+const biometricsSupported = async () => {
+  if (
+    !("PublicKeyCredential" in window) ||
+    typeof window.PublicKeyCredential?.isUserVerifyingPlatformAuthenticatorAvailable !== "function"
+  ) {
+    return false;
+  }
+  try {
+    return await window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+  } catch {
+    return false;
+  }
+};
+
+const showBiometricStatus = (message, isError = false) => {
+  biometricStatus.hidden = !message;
+  biometricStatus.textContent = message;
+  biometricStatus.style.background = isError ? "#fff0ec" : "";
+  biometricStatus.style.color = isError ? "#ad4938" : "";
+};
+
+const refreshBiometricUi = async () => {
+  const registration = getBiometricRegistration();
+  const supported = await biometricsSupported();
+
+  if (!supported) {
+    biometricEnableBtn.hidden = true;
+    biometricDisableBtn.hidden = true;
+    showBiometricStatus("This device or browser does not support biometric sign-in.", true);
+    return;
+  }
+
+  if (registration) {
+    biometricEnableBtn.hidden = true;
+    biometricDisableBtn.hidden = false;
+    showBiometricStatus(`Biometric sign-in is enabled for ${registration.email || "this account"} on this device.`);
+  } else {
+    biometricEnableBtn.hidden = false;
+    biometricDisableBtn.hidden = true;
+    showBiometricStatus("Biometric sign-in is not enabled on this device.");
+  }
+};
+
+biometricEnableBtn?.addEventListener("click", async () => {
+  biometricEnableBtn.disabled = true;
+  try {
+    const challenge = crypto.getRandomValues(new Uint8Array(32));
+    const credential = await navigator.credentials.create({
+      publicKey: {
+        challenge,
+        rp: { name: "LogMate" },
+        user: {
+          id: new TextEncoder().encode(user.id),
+          name: user.email,
+          displayName: user.email,
+        },
+        pubKeyCredParams: [
+          { type: "public-key", alg: -7 },
+          { type: "public-key", alg: -257 },
+        ],
+        authenticatorSelection: {
+          authenticatorAttachment: "platform",
+          userVerification: "required",
+          residentKey: "discouraged",
+        },
+        timeout: 60000,
+      },
+    });
+
+    if (!credential) {
+      showBiometricStatus("Biometric enrollment was cancelled.", true);
+      return;
+    }
+
+    localStorage.setItem(
+      BIOMETRIC_KEY,
+      JSON.stringify({
+        credentialId: btoa(String.fromCharCode(...new Uint8Array(credential.rawId))),
+        email: user.email,
+        userId: user.id,
+      }),
+    );
+    showBiometricStatus("Biometric sign-in enabled. Next time you can unlock LogMate with your fingerprint or face.");
+    await refreshBiometricUi();
+  } catch (err) {
+    console.warn("Biometric enrollment failed:", err);
+    showBiometricStatus("Biometric enrollment failed or was cancelled.", true);
+  } finally {
+    biometricEnableBtn.disabled = false;
+  }
+});
+
+biometricDisableBtn?.addEventListener("click", () => {
+  localStorage.removeItem(BIOMETRIC_KEY);
+  showBiometricStatus("Biometric sign-in has been disabled on this device.");
+  refreshBiometricUi();
+});
+
+refreshBiometricUi();
 
 document.querySelectorAll("[data-password-toggle]").forEach((toggle) => {
   toggle.addEventListener("click", () => {

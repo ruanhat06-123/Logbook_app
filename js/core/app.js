@@ -173,6 +173,11 @@ async function shell(active, content) {
     .querySelector("[data-signout]")
     ?.addEventListener("click", async () => {
       await supabase.auth.signOut();
+      // Remove the biometric enrollment for this device on sign-out so the
+      // next session can't be unlocked without a password.
+      try {
+        localStorage.removeItem("logmateBiometricCredential");
+      } catch {}
       document.cookie = "logmate_email=; Max-Age=0; Path=/; SameSite=Lax";
       window.location.href = "login.html";
     });

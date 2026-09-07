@@ -22,6 +22,197 @@ window.addEventListener("beforeinstallprompt", (event) => {
   deferredInstallPrompt = event;
   installButton.hidden = false;
 });
+
+// ---------- Biometric (WebAuthn) login ----------
+const BIOMETRIC_KEY = "logmateBiometricCredential";
+const biometricButton = document.querySelector("#biometric-login");
+
+const biometricsSupported = () =>
+  typeof window !== "undefined" &&
+  "PublicKeyCredential" in window &&
+  typeof window.PublicKeyCredential?.isUserVerifyingPlatformAuthenticatorAvailable === "function";
+
+const getBiometricRegistration = () => {
+  try {
+    return JSON.parse(localStorage.getItem(BIOMETRIC_KEY) || "null");
+  } catch {
+    return null;
+  }
+};
+
+const base64ToBytes = (value) =>
+  Uint8Array.from(atob(value), (char) => char.charCodeAt(0));
+const bytesToBase64 = (bytes) =>
+  btoa(String.fromCharCode(...new Uint8Array(bytes)));
+
+async function platformAuthenticatorReady() {
+  if (!biometricsSupported()) return false;
+  try {
+    return await window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+  } catch {
+    return false;
+  }
+}
+
+async function updateBiometricButtonVisibility() {
+  if (!biometricButton) return;
+  const registration = getBiometricRegistration();
+  biometricButton.hidden = !(registration && (await platformAuthenticatorReady()));
+}
+
+/**
+ * Register this device's platform authenticator (fingerprint / face) for the
+ * given account. Called once after a successful online sign-in.
+ */
+async function enrollBiometricForUser(user) {
+  if (!user?.id || !user?.email) return;
+  if (getBiometricRegistration()) return; // already enrolled on this device
+  if (!(await platformAuthenticatorReady())) return;
+
+  const wantsBiometrics = window.confirm(
+    "Enable biometric sign-in on this device?\n\nNext time you can unlock your LogMate session with your fingerprint or face instead of typing your password.",
+  );
+  if (!wantsBiometrics) return;
+
+  try {
+    const challenge = crypto.getRandomValues(new Uint8Array(32));
+    const credential = await navigator.credentials.create({
+      publicKey: {
+        challenge,
+        rp: { name: "LogMate" },
+        user: {
+          id: new TextEncoder().encode(user.id),
+          name: user.email,
+          displayName: user.email,
+        },
+        pubKeyCredParams: [
+          { type: "public-key", alg: -7 }, // ES256
+          { type: "public-key", alg: -257 }, // RS256
+        ],
+        authenticatorSelection: {
+          authenticatorAttachment: "platform",
+          userVerification: "required",
+          residentKey: "discouraged",
+        },
+        timeout: 60000,
+      },
+    });
+
+    if (!credential) return;
+
+    localStorage.setItem(
+      BIOMETRIC_KEY,
+      JSON.stringify({
+        credentialId: bytesToBase64(credential.rawId),
+        email: user.email,
+        userId: user.id,
+      }),
+    );
+  } catch (err) {
+    console.warn("Biometric enrollment failed or was cancelled:", err);
+  }
+}
+
+/**
+ * Verify the user with the platform authenticator, then continue with the
+ * saved session on this device.
+ * Returns true when the session was continued, false when biometrics failed
+ * or were cancelled (in which case the caller reveals the password form).
+ */
+async function signInWithBiometrics({ silent = false } = {}) {
+  const registration = getBiometricRegistration();
+  if (!registration) return false;
+
+  if (biometricButton) biometricButton.disabled = true;
+  try {
+    const challenge = crypto.getRandomValues(new Uint8Array(32));
+    const assertion = await navigator.credentials.get({
+      publicKey: {
+        challenge,
+        allowCredentials: [
+          {
+            type: "public-key",
+            id: base64ToBytes(registration.credentialId),
+            transports: ["internal"],
+          },
+        ],
+        userVerification: "required",
+        timeout: 60000,
+      },
+    });
+
+    if (!assertion) return false;
+
+    // Biometric check passed — continue with the saved session.
+    const continued = await continueWithOfflineSession();
+    if (!continued) {
+      notice.hidden = false;
+      notice.textContent =
+        "No saved session on this device. Sign in with your password once to use biometrics.";
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn("Biometric sign-in failed or was cancelled:", err);
+    if (!silent) {
+      notice.hidden = false;
+      notice.textContent =
+        "Biometric sign-in was cancelled or failed. Sign in with your password instead.";
+    }
+    return false;
+  } finally {
+    if (biometricButton) biometricButton.disabled = false;
+  }
+}
+
+/**
+ * Biometrics-first flow: when a credential exists on this device, hide the
+ * password form and prompt for biometrics immediately. The password form is
+ * only revealed when biometrics fail or are cancelled.
+ */
+async function startBiometricsFirstFlow() {
+  if (signup) return; // account creation always shows the full form
+  if (!getBiometricRegistration() || !(await platformAuthenticatorReady())) return;
+
+  biometricMode = true;
+  const formEl = document.querySelector("#auth-form");
+  if (formEl) formEl.hidden = true;
+  if (biometricButton) biometricButton.hidden = false;
+
+  title.textContent = "Unlock your logbook";
+  description.textContent =
+    "Verify with your fingerprint or face to continue.";
+  switchCopy.textContent = "Not you?";
+  switchMode.textContent = "Use a different account";
+
+  // Auto-prompt biometrics; on failure fall back to the password form.
+  const succeeded = await signInWithBiometrics({ silent: true });
+  if (!succeeded) exitBiometricMode(true);
+}
+
+/**
+ * Leave biometrics-first mode and show the normal password form.
+ */
+function exitBiometricMode(showNotice) {
+  if (!biometricMode) return;
+  biometricMode = false;
+  const formEl = document.querySelector("#auth-form");
+  if (formEl) formEl.hidden = false;
+  applyAuthMode(false);
+  updateOfflineLoginState();
+  if (showNotice) {
+    notice.hidden = false;
+    notice.textContent =
+      "Biometric sign-in was cancelled or failed. Sign in with your password instead.";
+  }
+}
+
+biometricButton?.addEventListener("click", async () => {
+  const succeeded = await signInWithBiometrics();
+  if (!succeeded) exitBiometricMode(false);
+});
+updateBiometricButtonVisibility();
+
 installButton.addEventListener("click", async () => {
   if (!deferredInstallPrompt) return;
   deferredInstallPrompt.prompt();
@@ -47,6 +238,9 @@ document.documentElement.dataset.theme =
   localStorage.getItem("theme") || "light";
 const form = document.querySelector("#auth-form");
 let signup = false;
+// When true, biometrics are the primary sign-in path and the password form
+// stays hidden until biometrics fail or are cancelled.
+let biometricMode = false;
 const showForgotPassword = true;
 if (new URLSearchParams(window.location.search).get("mode") === "signup") signup = true;
 const title = document.querySelector("#form-title"),
@@ -126,6 +320,12 @@ const updateOfflineLoginState = () => {
   }
 };
 switchMode.addEventListener("click", () => {
+  if (biometricMode) {
+    // From biometrics-first mode, "Use a different account" reveals the
+    // normal password form (and allows switching to sign-up).
+    exitBiometricMode(false);
+    return;
+  }
   applyAuthMode(!signup);
   updateOfflineLoginState();
 });
@@ -133,6 +333,9 @@ applyAuthMode(signup);
 updateOfflineLoginState();
 window.addEventListener("online", updateOfflineLoginState);
 window.addEventListener("offline", updateOfflineLoginState);
+// If this device has a biometric credential, make biometrics the primary
+// sign-in path and only fall back to the password form on failure.
+startBiometricsFirstFlow();
 forgotPassword.hidden = !showForgotPassword;
 forgotPassword.addEventListener("click", async () => {
   if (isOffline()) {
@@ -218,8 +421,11 @@ form.addEventListener("submit", async (event) => {
     signup && !result.data.session
       ? "Account created. You can now sign in."
       : "Welcome back. Opening your logbook...";
-  if (result.data.session)
+  if (result.data.session) {
     document.cookie = `logmate_email=${encodeURIComponent(email)}; Max-Age=31536000; Path=/; SameSite=Lax`;
+    // Offer to enable biometric unlock for future visits (fire and forget).
+    enrollBiometricForUser(result.data.session.user).then(updateBiometricButtonVisibility);
+  }
   if (result.data.session)
     setTimeout(() => (window.location.href = "dashboard.html"), 350);
 });
