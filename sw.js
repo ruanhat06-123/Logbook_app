@@ -1,4 +1,4 @@
-const CACHE_NAME = "logmate-shell-v15";
+const CACHE_NAME = "logmate-shell-v17";
 const OFFLINE_PAGE = "/html/offline.html";
 
 const APP_SHELL = [
@@ -22,6 +22,7 @@ const APP_SHELL = [
   "/js/core/tripUIIntegration.js",
   "/js/core/reportCache.js",
   "/js/core/analytics.js",
+  "/js/core/subscription.js",
   // Page modules
   "/js/pages/auth.js",
   "/js/pages/dashboard.js",
@@ -36,6 +37,7 @@ const APP_SHELL = [
   "/js/pages/resetPassword.js",
   "/js/pages/vehicleList.js",
   "/js/pages/analytics.js",
+  "/js/pages/fleet.js",
   // HTML pages for offline access
   "/html/login.html",
   "/html/dashboard.html",
@@ -49,6 +51,7 @@ const APP_SHELL = [
   "/html/help.html",
   "/html/analytics.html",
   "/html/reset-password.html",
+  "/html/fleet.html",
 ];
 
 self.addEventListener("install", (event) => {

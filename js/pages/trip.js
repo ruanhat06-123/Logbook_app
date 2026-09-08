@@ -1426,6 +1426,14 @@ if (user) {
       const tripDistance = endOdo - startOdo;
       const tripPurposeToStore = purpose === "other" ? purposeOther : purpose;
 
+      if (!editingTripId && (await isFreeTripLimitReached(user.id))) {
+        window.alert(
+          `Free tier is limited to ${FREE_TRIP_LIMIT} trips/month. Upgrade to Premium for unlimited trips.`,
+        );
+        window.location.href = "settings.html#billing";
+        return;
+      }
+
       try {
         const tripValues = {
             vehicle_id: vehicleId,

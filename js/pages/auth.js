@@ -1,4 +1,5 @@
 import { supabase } from "../core/supabaseClient.js";
+import { syncSubscription } from "../core/subscription.js";
 
 const isOffline = () => !navigator.onLine;
 
@@ -11,6 +12,7 @@ async function continueWithOfflineSession() {
   if (email) {
     document.cookie = `logmate_email=${encodeURIComponent(email)}; Max-Age=31536000; Path=/; SameSite=Lax`;
   }
+  syncSubscription(data.session.user.id).catch(() => {});
   window.location.href = "dashboard.html";
   return true;
 }
@@ -423,6 +425,7 @@ form.addEventListener("submit", async (event) => {
       : "Welcome back. Opening your logbook...";
   if (result.data.session) {
     document.cookie = `logmate_email=${encodeURIComponent(email)}; Max-Age=31536000; Path=/; SameSite=Lax`;
+    syncSubscription(result.data.session.user.id).catch(() => {});
     // Offer to enable biometric unlock for future visits (fire and forget).
     enrollBiometricForUser(result.data.session.user).then(updateBiometricButtonVisibility);
   }

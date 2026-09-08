@@ -2,6 +2,17 @@
 import { supabase } from "./supabaseClient.js";
 import { initializeOfflineDetection } from "./offlineIndicator.js";
 import "./serviceReminder.js";
+import {
+  getSubscriptionState,
+  syncSubscription,
+  isPremiumTier,
+  isFleetTier,
+  canExportSarsPdf,
+  isFreeTripLimitReached,
+  tierLabel,
+  subscriptionBannerMarkup,
+  FREE_TRIP_LIMIT,
+} from "./subscription.js";
 
 // Initialize offline detection on app startup
 initializeOfflineDetection();
@@ -109,7 +120,7 @@ const escapeHtml = (value) =>
 /**
  * Render the left navigation and user info
  */
-function renderNav(active, user) {
+function renderNav(active, user, subscriptionState) {
   const nav = document.querySelector("[data-nav]");
   if (!nav) return;
   const metadata = user?.user_metadata || {},
@@ -126,7 +137,11 @@ function renderNav(active, user) {
         .map((part) => part[0].toUpperCase())
         .join("") || "U";
 
-  nav.innerHTML = `<div class="brand"><img class="brand-mark" src="../assets/logo.svg" alt="" /> LogMate</div><div class="nav-label">Workspace</div><nav class="nav"><a class="${active === "home" ? "active" : ""}" href="dashboard.html"><span class="nav-icon">⌂</span>Overview</a><a class="${active === "vehicles" ? "active" : ""}" href="vehicles.html"><span class="nav-icon">▣</span>My vehicles</a><a class="${active === "logbook" ? "active" : ""}" href="logbook.html"><span class="nav-icon">＋</span>New fill-up</a><a class="${active === "trip" ? "active" : ""}" href="trip.html"><span class="nav-icon">↗</span>New trip</a><a class="${active === "report" ? "active" : ""}" href="report.html"><span class="nav-icon">▤</span>Fuel reports</a><a class="${active === "trip-report" ? "active" : ""}" href="trip-report.html"><span class="nav-icon">◫</span>Trip reports</a><a class="${active === "analytics" ? "active" : ""}" href="analytics.html"><span class="nav-icon">∿</span>Analytics</a><a class="${active === "help" ? "active" : ""}" href="help.html"><span class="nav-icon">?</span>Help</a></nav><a class="nav-settings ${active === "settings" ? "active" : ""}" href="settings.html" aria-label="Settings" title="Settings"><span class="nav-icon" aria-hidden="true">⚙</span><span>Settings</span></a><div class="sidebar-footer"><div class="user-chip"><span class="avatar">${escapeHtml(initials)}</span><div><div class="user-name">${escapeHtml(displayName)}</div><div class="user-role">Personal account</div></div></div><button class="signout" data-signout>Sign out →</button></div>`;
+  const fleetLink = isFleetTier(subscriptionState)
+    ? `<a class="${active === "fleet" ? "active" : ""}" href="fleet.html"><span class="nav-icon">⚑</span>Fleet</a>`
+    : "";
+
+  nav.innerHTML = `<div class="brand"><img class="brand-mark" src="../assets/logo.svg" alt="" /> LogMate</div><div class="nav-label">Workspace</div><nav class="nav"><a class="${active === "home" ? "active" : ""}" href="dashboard.html"><span class="nav-icon">⌂</span>Overview</a><a class="${active === "vehicles" ? "active" : ""}" href="vehicles.html"><span class="nav-icon">▣</span>My vehicles</a><a class="${active === "logbook" ? "active" : ""}" href="logbook.html"><span class="nav-icon">＋</span>New fill-up</a><a class="${active === "trip" ? "active" : ""}" href="trip.html"><span class="nav-icon">↗</span>New trip</a><a class="${active === "report" ? "active" : ""}" href="report.html"><span class="nav-icon">▤</span>Fuel reports</a><a class="${active === "trip-report" ? "active" : ""}" href="trip-report.html"><span class="nav-icon">◫</span>Trip reports</a><a class="${active === "analytics" ? "active" : ""}" href="analytics.html"><span class="nav-icon">∿</span>Analytics</a>${fleetLink}<a class="${active === "help" ? "active" : ""}" href="help.html"><span class="nav-icon">?</span>Help</a></nav><a class="nav-settings ${active === "settings" ? "active" : ""}" href="settings.html" aria-label="Settings" title="Settings"><span class="nav-icon" aria-hidden="true">⚙</span><span>Settings</span></a><div class="sidebar-footer"><div class="user-chip"><span class="avatar">${escapeHtml(initials)}</span><div><div class="user-name">${escapeHtml(displayName)}</div><div class="user-role">${escapeHtml(tierLabel(subscriptionState))} account</div></div></div><button class="signout" data-signout>Sign out →</button></div>`;
 }
 
 /**
@@ -148,8 +163,11 @@ async function shell(active, content) {
   const user = await requireAuth();
   if (!user) return null;
 
-  document.body.innerHTML = `<div class="app-shell"><aside class="sidebar"><div data-nav></div></aside><main class="main">${content}</main></div>`;
-  renderNav(active, user);
+  const subscriptionState = await getSubscriptionState(user.id);
+  const banner = subscriptionBannerMarkup(subscriptionState);
+
+  document.body.innerHTML = `<div class="app-shell"><aside class="sidebar"><div data-nav></div></aside><main class="main">${banner}${content}</main></div>`;
+  renderNav(active, user, subscriptionState);
 
   const themeToggle = document.createElement("button");
   themeToggle.className = "theme-toggle";
@@ -203,4 +221,12 @@ Object.assign(globalThis, {
   shell,
   requireAuth,
   escapeHtml,
+  getSubscriptionState,
+  syncSubscription,
+  isPremiumTier,
+  isFleetTier,
+  canExportSarsPdf,
+  isFreeTripLimitReached,
+  tierLabel,
+  FREE_TRIP_LIMIT,
 });

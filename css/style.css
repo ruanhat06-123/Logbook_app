@@ -1085,6 +1085,36 @@ h3 {
   margin-top: 4px;
   font-size: 11px;
 }
+.subscription-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 14px 16px;
+  margin-bottom: 20px;
+  background: #eaf6ff;
+  color: #1f5c8a;
+  border: 1px solid #a9d6f5;
+  border-left: 4px solid var(--teal-deep, #1f5c8a);
+  border-radius: 7px;
+}
+.subscription-banner-warning {
+  background: #fff0ec;
+  color: #ad4938;
+  border-color: #f3b7a8;
+  border-left-color: #ad4938;
+}
+.subscription-banner strong,
+.subscription-banner span {
+  display: block;
+}
+.subscription-banner strong {
+  font-size: 12px;
+}
+.subscription-banner span {
+  margin-top: 4px;
+  font-size: 11px;
+}
 .auth-page {
   min-height: 100vh;
   display: grid;

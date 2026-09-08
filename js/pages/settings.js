@@ -5,6 +5,18 @@ if (!user) throw new Error("Not authenticated");
 const settingsVehicles = await vehicles();
 const vehicleOptions = settingsVehicles.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.number_plate || "Vehicle")} · ${escapeHtml(`${item.make || ""} ${item.model || ""}`.trim())}</option>`).join("");
 
+const subscriptionState = await syncSubscription(user.id);
+const PLANS = [
+  { tier: "premium", cycle: "monthly", label: "Premium · Monthly", price: "R99/mo" },
+  { tier: "premium", cycle: "annual", label: "Premium · Annual (2 months free)", price: "R990/yr" },
+  { tier: "fleet_starter", cycle: "monthly", label: "Fleet Starter · Monthly", price: "R299/mo" },
+  { tier: "fleet_pro", cycle: "monthly", label: "Fleet Pro · Monthly", price: "R799/mo" },
+];
+const planButtons = PLANS.map(
+  (plan) =>
+    `<button class="btn btn-secondary" type="button" data-checkout-tier="${plan.tier}" data-checkout-cycle="${plan.cycle}">${escapeHtml(plan.label)} — ${escapeHtml(plan.price)}</button>`,
+).join("");
+
 await shell("settings", `
   <header class="topbar">
     <div>
@@ -31,6 +43,13 @@ await shell("settings", `
         <div class="form-actions field full"><button class="btn btn-primary" type="submit">Change password →</button></div>
       </form>
       <div id="password-notice" class="notice" hidden></div>
+    </section>
+    <section class="card" id="billing">
+      <div class="card-head"><h2>Subscription &amp; billing</h2></div>
+      <p class="row-sub">Current plan: <strong>${escapeHtml(tierLabel(subscriptionState))}</strong> · Payment status: <strong>${escapeHtml(subscriptionState.paymentStatus)}</strong>${subscriptionState.expiryDate ? ` · Renews/expires ${escapeHtml(dateText(subscriptionState.expiryDate))}` : ""}</p>
+      <p class="row-sub">Free tier is limited to ${FREE_TRIP_LIMIT} trips/month and does not include SARS PDF export.</p>
+      <div class="form-actions" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">${planButtons}</div>
+      <div id="billing-notice" class="notice" hidden></div>
     </section>
     <section class="card">
       <div class="card-head"><h2>Appearance</h2></div>
@@ -314,4 +333,41 @@ document.querySelector("#password-form").addEventListener("submit", async (event
   if (error) return showNotice("password-notice", error.message, true);
   event.target.reset();
   showNotice("password-notice", "Password changed successfully.");
+});
+
+// ---------- Subscription & billing ----------
+if (window.location.hash === "#billing") {
+  document.querySelector("#billing")?.scrollIntoView({ block: "start" });
+}
+
+async function startCheckout({ tier, cycle }) {
+  showNotice("billing-notice", "Redirecting to secure checkout...");
+  try {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const apiBase =
+      window.__ENV?.VITE_API_URL ||
+      (window.location.port === "5500" ? "http://localhost:3000" : "");
+    const response = await fetch(`${apiBase}/api/billing/checkout`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${sessionData.session?.access_token || ""}`,
+      },
+      body: JSON.stringify({ tier, billingCycle: cycle }),
+    });
+    const result = await response.json();
+    if (!response.ok || !result.checkoutUrl) {
+      throw new Error(result.error || "Checkout could not be started.");
+    }
+    window.location.href = result.checkoutUrl;
+  } catch (err) {
+    console.error("Checkout failed:", err);
+    showNotice("billing-notice", `Could not start checkout: ${err.message}`, true);
+  }
+}
+
+document.querySelectorAll("[data-checkout-tier]").forEach((btn) => {
+  btn.addEventListener("click", () =>
+    startCheckout({ tier: btn.dataset.checkoutTier, cycle: btn.dataset.checkoutCycle }),
+  );
 });

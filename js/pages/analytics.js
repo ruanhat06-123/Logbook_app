@@ -17,6 +17,27 @@ import {
 const user = await requireAuth();
 if (!user) throw new Error("Not authenticated");
 
+const subscriptionState = await getSubscriptionState(user.id);
+if (!isPremiumTier(subscriptionState)) {
+  await shell(
+    "analytics",
+    `
+    <header class="topbar">
+      <div><div class="eyebrow">Insights / analytics</div><h1>Smart analytics is a Premium feature.</h1></div>
+      <div class="top-date"><strong>PREMIUM / FLEET</strong>On-device insights</div>
+    </header>
+    <section class="card">
+      <div class="card-head"><h2>Unlock trends, predictions, and anomaly alerts</h2></div>
+      <p class="row-sub">Premium and Fleet plans include fuel-efficiency trends, business/personal split forecasting, service-compliance tracking, and anomaly detection for trips and fill-ups — all computed on this device.</p>
+      <div class="form-actions" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:16px">
+        <a class="btn btn-primary" href="settings.html#billing">View plans →</a>
+      </div>
+    </section>
+  `,
+  );
+  throw new Error("Analytics requires a Premium or Fleet subscription");
+}
+
 const escape = (value) =>
   String(value ?? "").replace(
     /[&<>'"]/g,

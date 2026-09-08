@@ -5,6 +5,8 @@ import { computeAnalytics, getCachedAnalytics } from "../core/analytics.js";
 
 const user = await requireAuth();
 if (!user) throw new Error("Not authenticated");
+const subscriptionState = await getSubscriptionState(user.id);
+const sarsExportAllowed = canExportSarsPdf(subscriptionState);
 
 try {
   // Fetch vehicles and trips (primary) and fallback trip-like entries from car_logbook
@@ -122,7 +124,7 @@ try {
         <button id="tax-year-button" class="btn btn-secondary" type="button" title="Use the current SARS tax year (1 Mar – end Feb)">Tax year ${currentTaxYear.label}</button>
         <button id="filter-button" class="btn btn-primary">Update report ↗</button>
         <button id="download-button" class="btn btn-secondary">Download CSV ↓</button>
-        <button id="sars-pdf-button" class="btn btn-secondary">SARS PDF ↓</button>
+        <button id="sars-pdf-button" class="btn btn-secondary">${sarsExportAllowed ? "SARS PDF ↓" : "🔒 SARS PDF (Premium)"}</button>
         <button id="print-button" class="btn btn-secondary">Print report</button>
       </div>
       <div id="report-output"></div>
@@ -271,6 +273,11 @@ try {
    * business/personal split, and a retention declaration.
    */
   sarsPdfBtn?.addEventListener("click", () => {
+    if (!sarsExportAllowed) {
+      window.alert("SARS PDF export is a Premium/Fleet feature. Upgrade from Settings → Subscription & billing.");
+      window.location.href = "settings.html#billing";
+      return;
+    }
     const rows = filteredRows();
     if (!rows.length) {
       window.alert("No trips in the selected period to export.");

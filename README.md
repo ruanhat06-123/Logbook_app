@@ -33,7 +33,8 @@ LogMate helps you keep a complete, audit-ready record of your driving: live GPS 
 - Interruption-safe: if the page closes mid-confirmation, the reminder re-appears on the next visit.
 - Full service history per vehicle with titles, dates, mileage, invoice amounts, notes, and file attachments (photos/PDF invoices via Supabase Storage). CSV export and printable reports included.
 
-### Smart analytics
+### Smart analytics (Premium / Fleet)
+- Not available on the Free tier — the analytics page shows an upgrade prompt instead when `subscription_tier` is `free` (see [js/pages/analytics.js](js/pages/analytics.js)).
 - **Anomaly detection** — trips with distance outside ±20% of the vehicle's historical average; fill-ups with consumption outside ±20% of the previous 5 fill-ups; overdue service intervals.
 - **Predictive insights** — next service date forecast from average daily usage; monthly fuel cost estimate from the last 90 days of fill-ups; projected business/personal mileage split for the current SA tax year.
 - **Visual dashboards** — pure SVG charts (no libraries): fuel-efficiency trend line, business-vs-personal bar chart, service-compliance gauge.
@@ -62,6 +63,15 @@ LogMate helps you keep a complete, audit-ready record of your driving: live GPS 
 - Live trip tracking notifications toggle.
 - Map theme preference (light/dark/follow system).
 - Offline data management (clear cached trip coordinates, pending trips, geocode lookups, report caches).
+- **Subscription & billing** — current plan, payment status, and renewal date, with upgrade buttons for Premium (monthly/annual) and Fleet Starter/Pro.
+
+### Subscriptions & fleet management
+- **Tiers**: `free`, `premium`, `fleet_starter`, `fleet_pro`, tracked per user in the Supabase `users` table (`subscription_tier`, `subscription_expiry_date`, `payment_status`). New accounts default to `free`.
+- **Payments**: PayFast only, via `server/api-server.js` — `/api/billing/checkout` builds a signed PayFast redirect, and `/api/webhooks/payfast` (ITN) updates the subscription row on success/failure (service-role Supabase client, bypasses RLS).
+- **Feature gating**: [js/core/subscription.js](js/core/subscription.js) fetches a fresh subscription state on each load (falling back to the offline cache when offline) and exposes `isPremiumTier`, `isFleetTier`, `canExportSarsPdf`, and `isFreeTripLimitReached`. Free tier is capped at 30 trips/month, cannot export the SARS PDF, and has no access to Smart analytics; a database trigger (`enforce_trip_quota` in [server/sql/subscriptions.sql](server/sql/subscriptions.sql)) enforces the trip cap server-side as well.
+- **Login flow**: on sign-in (including offline session restore), the subscription row is synced and cached; expired or failed subscriptions are treated as `free` on the client, and `downgrade_expired_subscriptions()` (callable via RPC or `pg_cron`) performs the same downgrade server-side after a 7-day grace period.
+- **Notifications**: an in-app banner (`subscriptionBannerMarkup`) warns when a paid plan is expiring within 7 days or when a payment has failed.
+- **Fleet dashboard** — [html/fleet.html](html/fleet.html) / [js/pages/fleet.js](js/pages/fleet.js), gated to `fleet_starter`/`fleet_pro`, shows fleet-wide distance, business-use %, fuel spend, and per-vehicle summaries; the nav link only appears for fleet-tier accounts.
 
 ### PWA / offline
 - Installable (manifest + beforeinstallprompt), standalone display.
@@ -99,10 +109,12 @@ js/core/
   offlineSync.js        Legacy ORS sync queue (kept, no longer auto-used)
   reportCache.js        Offline report caching
   serviceReminder.js    Reminder banners, notifications, confirm flow
+  subscription.js       Offline-first subscription state, feature gating (SARS export, trip cap, fleet)
   supabaseClient.js     Supabase client init
   tripUIIntegration.js  Live trip start/end, notification, form population
-js/pages/               Per-page controllers (trip, logbook, analytics, …)
-server/api-server.js    ORS proxy server
+js/pages/               Per-page controllers (trip, logbook, analytics, fleet, …)
+server/api-server.js    ORS proxy + PayFast checkout/webhook (subscription billing)
+server/sql/subscriptions.sql  Supabase migration: users table, RLS, triggers
 ```
 
 ## Data model (Supabase)
@@ -113,6 +125,8 @@ server/api-server.js    ORS proxy server
 - **service_records** — vehicle_id, title, service_date, mileage, invoice_amount, notes.
 - **service_record_files** — service_record_id, file_path, file_name, content_type.
 - **regional_fuel_prices** — country_code, fuel_type, price_per_litre, currency, region, valid_from, source.
+- **users** — mirrors `auth.users`, adds `subscription_tier`, `subscription_expiry_date`, `payment_status`, `billing_cycle` (see [server/sql/subscriptions.sql](server/sql/subscriptions.sql)).
+- **subscription_events** — payment webhook audit log (provider, event_type, amount, raw_payload).
 
 ## SARS compliance
 
@@ -121,8 +135,9 @@ The trip report captures and exports everything SARS requires: trip date, openin
 ## Running locally
 
 1. Serve the static files (e.g. Five Server / any static host) — HTTPS or localhost is required for geolocation, notifications, and WebAuthn.
-2. Run the ORS proxy if you want route-based auto distance on manual trips: `node server/api-server.js` (requires an ORS API key).
-3. Ensure [js/core/env.js](js/core/env.js) exposes `VITE_MAPBOX_TOKEN`.
+2. Run the API/proxy server if you want route-based auto distance and subscription billing: `node server/api-server.js` (requires an ORS API key; billing endpoints additionally need `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `PAYFAST_MERCHANT_ID`, `PAYFAST_MERCHANT_KEY`, and `PAYFAST_PASSPHRASE` — see [server/api-server.js](server/api-server.js)).
+3. Run [server/sql/subscriptions.sql](server/sql/subscriptions.sql) once in the Supabase SQL editor to add the `users`/`subscription_events` tables, triggers, and RLS policies.
+4. Ensure [js/core/env.js](js/core/env.js) exposes `VITE_MAPBOX_TOKEN`.
 
 ## Notes & conventions
 
