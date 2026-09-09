@@ -1,0 +1,22 @@
+{
+  "currency": "R",
+  "sarsExport": {
+    "label": "SARS PDF export",
+    "price": 99
+  },
+  "plans": {
+    "premium": {
+      "label": "Premium",
+      "monthly": 99
+    
+    },
+    "fleet_starter": {
+      "label": "Fleet Starter",
+      "monthly": 299
+    },
+    "fleet_pro": {
+      "label": "Fleet Pro",
+      "monthly": 799
+    }
+  }
+}

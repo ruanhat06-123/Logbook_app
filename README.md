@@ -16,7 +16,7 @@ LogMate helps you keep a complete, audit-ready record of your driving: live GPS 
   - Impossible-speed jump rejection (> 216 km/h) filters GPS glitches.
   - Stationary jitter is ignored in the distance total (accuracy-aware Haversine summation).
 - **Minimal API usage** — at most 2 external calls per trip (reverse-geocoding the start and end addresses, fired once in parallel at trip end and cached so reloads never re-spend them). Distance calculation is 100% local.
-- **Live notification** — a persistent notification updates every second with the current trip distance in whole km, with an "End trip" action. It closes automatically when the trip is ended from the app.
+- **Live notification** — a persistent notification updates every second with the current trip distance to one decimal place in km, with an "End trip" action. It closes automatically when the trip is ended from the app.
 - **Single form flow** — ending a live trip pre-fills the existing trip form (vehicle, date, odometers, resolved origin/destination); you confirm the remaining fields and save. No duplicate forms, no automatic DB writes.
 - **Edit previous trips** — select any past trip from the dropdown to update it in place.
 - **Crash-safe** — pending live-trip data is persisted locally and restored into the form if the page reloads mid-flow.
@@ -43,7 +43,7 @@ LogMate helps you keep a complete, audit-ready record of your driving: live GPS 
 
 ### Reports
 - **Trip report** — filter by vehicle, trip type, purpose, and date range. Shows totals, business/personal split, business-use percentage, and annual odometer readings per vehicle. Defaults to the current SA tax year (1 Mar → end Feb); a one-click "Tax year" button re-applies it. Anomalous trips are flagged inline.
-- **SARS PDF** — print-ready A4-landscape logbook via a hidden iframe (pop-up-blocker-proof) containing all SARS-required fields (date, odometer readings, distance, destination, business reason), annual odometer readings, business/personal split, anomaly highlights, and a five-year retention declaration. Falls back to an HTML file download if printing fails.
+- **SARS PDF** — Premium and Fleet users get included print-ready A4-landscape exports; Free users can purchase a single export at the amount configured in [pricing.json](pricing.json). Each Free export is credited only after a verified PayFast webhook and consumed server-side.
 - **CSV export** — spreadsheet-friendly trip report download with an anomaly column.
 - **Fuel report** — fill-up costs, litres, mileage, and consumption with filters.
 - Reports are cached locally for offline viewing ([js/core/reportCache.js](js/core/reportCache.js)).
@@ -63,7 +63,7 @@ LogMate helps you keep a complete, audit-ready record of your driving: live GPS 
 - Live trip tracking notifications toggle.
 - Map theme preference (light/dark/follow system).
 - Offline data management (clear cached trip coordinates, pending trips, geocode lookups, report caches).
-- **Subscription & billing** — current plan, payment status, and renewal date, with upgrade buttons for Premium (monthly/annual) and Fleet Starter/Pro.
+- **Subscription & billing** — current plan, payment status, and renewal date, with monthly upgrade buttons for Premium and Fleet Starter/Pro.
 
 ### Subscriptions & fleet management
 - **Tiers**: `free`, `premium`, `fleet_starter`, `fleet_pro`, tracked per user in the Supabase `users` table (`subscription_tier`, `subscription_expiry_date`, `payment_status`). New accounts default to `free`.
@@ -135,7 +135,8 @@ The trip report captures and exports everything SARS requires: trip date, openin
 ## Running locally
 
 1. Serve the static files (e.g. Five Server / any static host) — HTTPS or localhost is required for geolocation, notifications, and WebAuthn.
-2. Run the API/proxy server if you want route-based auto distance and subscription billing: `node server/api-server.js` (requires an ORS API key; billing endpoints additionally need `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `PAYFAST_MERCHANT_ID`, `PAYFAST_MERCHANT_KEY`, and `PAYFAST_PASSPHRASE` — see [server/api-server.js](server/api-server.js)).
+2. Copy [.env.example](.env.example) to `.env`, fill in the server credentials, run [server/sql/export_credits.sql](server/sql/export_credits.sql) in Supabase, and run the API/proxy server for route-based auto distance and subscription billing: `node server/api-server.js`. ORS is optional for checkout; directions return a JSON `503` until `ORS_API_KEY` is configured. Billing requires `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `PAYFAST_MERCHANT_ID`, `PAYFAST_MERCHANT_KEY`, and `PAYFAST_PASSPHRASE`. PayFast and API URLs use `https://logmate.co.za` by default. Set `APP_BASE_URL`, `PAYFAST_RETURN_URL`, `PAYFAST_CANCEL_URL`, or `PAYFAST_NOTIFY_URL` to override them when needed. Test with PayFast sandbox before switching `PAYFAST_SANDBOX=false`.
+  Verify the deployed API with `https://logmate.co.za/api/health`; it should return JSON with `ok: true`. The Five Server frontend on port 5500 calls the production API at `https://logmate.co.za/api/billing/checkout`.
 3. Run [server/sql/subscriptions.sql](server/sql/subscriptions.sql) once in the Supabase SQL editor to add the `users`/`subscription_events` tables, triggers, and RLS policies.
 4. Ensure [js/core/env.js](js/core/env.js) exposes `VITE_MAPBOX_TOKEN`.
 
@@ -143,5 +144,5 @@ The trip report captures and exports everything SARS requires: trip date, openin
 
 - The service worker cache version (`CACHE_NAME` in [sw.js](sw.js)) must be bumped whenever JS modules change, otherwise clients keep serving stale code. The app calls `registration.update()` on load.
 - All notifications use `/assets/logo.svg` as icon/badge.
-- Live trip distance displays are rounded to whole numbers (m under 1 km, km above).
+- Live trip distance displays use whole meters under 1 km and one decimal place for kilometres above 1 km.
 - Analytics results are cached in IndexedDB under the `analyticsResults` key and recomputed whenever trips or fill-ups are logged.

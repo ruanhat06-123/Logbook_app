@@ -725,9 +725,7 @@ if (user) {
   async function calculateDrivingDistanceKm(originCoordsArr, destCoordsArr) {
     if (!originCoordsArr || !destCoordsArr) throw new Error("Missing coordinates");
 
-    const apiBase =
-      window.__ENV?.VITE_API_URL ||
-      (window.location.port === "5500" ? "http://localhost:3000" : "");
+    const apiBase = window.__ENV?.VITE_API_URL || "https://logmate.co.za";
     try {
       const resp = await fetch(`${apiBase}/api/ors/directions`, {
         method: "POST",

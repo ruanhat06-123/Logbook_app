@@ -2,16 +2,27 @@
 // Minimal Express proxy for OpenRouteService directions, plus LogMate
 // subscription billing: PayFast checkout redirect and ITN webhook
 // (npm i @supabase/supabase-js).
-require("dotenv").config();
+const path = require("path");
+require("dotenv").config({ path: path.resolve(__dirname, "..", ".env") });
 const express = require("express");
 const crypto = require("crypto");
 const fetch = require("node-fetch"); // npm i node-fetch@2
 const { createClient } = require("@supabase/supabase-js"); // npm i @supabase/supabase-js
+const pricingCatalog = require("../pricing.json");
 const app = express();
+const PRODUCTION_BASE_URL = "https://logmate.co.za";
+const getAppBaseUrl = (req) => {
+  if (process.env.APP_BASE_URL) return process.env.APP_BASE_URL.replace(/\/$/, "");
+  return PRODUCTION_BASE_URL;
+};
+
 app.use((req, res, next) => {
   const allowedOrigins = new Set([
     "http://127.0.0.1:5500",
     "http://localhost:5500",
+    "http://127.0.0.1:3000",
+    "http://localhost:3000",
+    PRODUCTION_BASE_URL,
   ]);
   const origin = req.headers.origin;
   if (allowedOrigins.has(origin)) res.setHeader("Access-Control-Allow-Origin", origin);
@@ -31,11 +42,8 @@ const supabaseAdmin =
     ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
     : null;
 
-const PLAN_PRICING = {
-  premium: { monthly: 99, annual: 990 },
-  fleet_starter: { monthly: 299, annual: 2990 },
-  fleet_pro: { monthly: 799, annual: 7990 },
-};
+const PLAN_PRICING = pricingCatalog.plans;
+const SARS_EXPORT_PRICE = Number(pricingCatalog.sarsExport?.price || 0);
 
 async function getUserFromRequest(req) {
   if (!supabaseAdmin) throw new Error("Supabase admin client not configured");
@@ -50,7 +58,7 @@ async function getUserFromRequest(req) {
 async function applySuccessfulPayment({ userId, tier, billingCycle, amount }) {
   if (!supabaseAdmin) return;
   const expiry = new Date();
-  expiry.setMonth(expiry.getMonth() + (billingCycle === "annual" ? 14 : 1)); // annual = 12 + 2 free months
+  expiry.setMonth(expiry.getMonth() + 1);
 
   await supabaseAdmin
     .from("users")
@@ -86,14 +94,37 @@ async function applyFailedPayment({ userId, amount }) {
   // TODO: trigger a retry (dunning) and a "payment failed" email notification here.
 }
 
-const ORS_KEY = process.env.ORS_API_KEY;
-if (!ORS_KEY) {
-  console.error("ORS_API_KEY missing in .env");
-  process.exit(1);
+async function applySuccessfulExportPayment({ userId, amount }) {
+  if (!supabaseAdmin) return;
+  const { error } = await supabaseAdmin.rpc("grant_sars_export_credit", {
+    target_user_id: userId,
+  });
+  if (error) throw error;
+  await supabaseAdmin.from("subscription_events").insert({
+    user_id: userId,
+    provider: "payfast",
+    event_type: "sars_export_succeeded",
+    amount,
+  });
 }
+
+async function applyFailedExportPayment({ userId, amount }) {
+  if (!supabaseAdmin) return;
+  await supabaseAdmin.from("subscription_events").insert({
+    user_id: userId,
+    provider: "payfast",
+    event_type: "sars_export_failed",
+    amount,
+  });
+}
+
+const ORS_KEY = process.env.ORS_API_KEY;
 
 app.post("/api/ors/directions", async (req, res) => {
   try {
+    if (!ORS_KEY) {
+      return res.status(503).json({ error: "OpenRouteService is not configured" });
+    }
     const { coordinates } = req.body; // expect [[lon,lat],[lon,lat]]
     if (!Array.isArray(coordinates) || coordinates.length !== 2) {
       return res.status(400).json({ error: "Invalid coordinates" });
@@ -127,38 +158,54 @@ app.post("/api/ors/directions", async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 
+app.get("/api/health", (req, res) => {
+  res.json({ ok: true, service: "logmate-api", port: Number(PORT) });
+});
+
 // ---------------------------------------------------------------------------
 // Checkout — builds a signed PayFast redirect URL for the chosen plan.
 // ---------------------------------------------------------------------------
 app.post("/api/billing/checkout", async (req, res) => {
   try {
     const user = await getUserFromRequest(req);
-    const { tier, billingCycle } = req.body || {};
-    const amount = PLAN_PRICING[tier]?.[billingCycle];
-    if (!amount) return res.status(400).json({ error: "Unknown plan or billing cycle" });
+    const { product = "subscription", plan, tier = plan, billingCycle = "monthly" } = req.body || {};
+    const isExport = product === "sars_export";
+    if (isExport) {
+      if (!SARS_EXPORT_PRICE) return res.status(503).json({ error: "Export pricing is not configured" });
+    } else if (!PLAN_PRICING[tier]?.[billingCycle] || billingCycle !== "monthly" || !["premium", "fleet_starter", "fleet_pro"].includes(tier)) {
+      return res.status(400).json({ error: "Unknown plan or billing cycle" });
+    }
+    const amount = isExport ? SARS_EXPORT_PRICE : PLAN_PRICING[tier][billingCycle];
+    if (!process.env.PAYFAST_MERCHANT_ID || !process.env.PAYFAST_MERCHANT_KEY || !process.env.PAYFAST_PASSPHRASE) {
+      return res.status(503).json({ error: "PayFast is not configured" });
+    }
 
-    const baseUrl = process.env.APP_BASE_URL || "https://logmate.co.za";
-    const metadata = { tier, billingCycle };
+    const baseUrl = getAppBaseUrl(req);
+    const metadata = isExport
+      ? { product: "sars_export", billingCycle: "one_off" }
+      : { product: "subscription", tier, billingCycle };
 
     // PayFast uses a signed redirect form rather than a hosted session API,
     // with recurring billing fields since every plan here is a subscription.
     const fields = {
       merchant_id: process.env.PAYFAST_MERCHANT_ID,
       merchant_key: process.env.PAYFAST_MERCHANT_KEY,
-      return_url: `${baseUrl}/html/settings.html?billing=success`,
-      cancel_url: `${baseUrl}/html/settings.html?billing=cancelled`,
-      notify_url: `${baseUrl}/api/webhooks/payfast`,
+      return_url: process.env.PAYFAST_RETURN_URL || `${baseUrl}/${isExport ? "html/trip-report.html?billing=export-success" : "html/settings.html?billing=success"}`,
+      cancel_url: process.env.PAYFAST_CANCEL_URL || `${baseUrl}/${isExport ? "html/trip-report.html?billing=export-cancelled" : "html/settings.html?billing=cancelled"}`,
+      notify_url: process.env.PAYFAST_NOTIFY_URL || `${baseUrl}/api/webhooks/payfast`,
       email_address: user.email,
       amount: amount.toFixed(2),
-      item_name: `LogMate ${tier}`,
-      m_payment_id: user.id,
-      custom_str1: metadata.tier,
+      item_name: isExport ? "LogMate SARS PDF export" : `LogMate ${tier}`,
+      m_payment_id: isExport ? `${user.id}:export:${Date.now()}` : user.id,
+      custom_str1: isExport ? metadata.product : metadata.tier,
       custom_str2: metadata.billingCycle,
-      subscription_type: "1",
-      billing_date: new Date().toISOString().slice(0, 10),
-      recurring_amount: amount.toFixed(2),
-      frequency: billingCycle === "annual" ? "6" : "3", // PayFast: 3 = monthly, 6 = annual
-      cycles: "0", // 0 = bill until the subscription is cancelled
+      ...(isExport ? {} : {
+        subscription_type: "1",
+        billing_date: new Date().toISOString().slice(0, 10),
+        recurring_amount: amount.toFixed(2),
+        frequency: "3",
+        cycles: "0",
+      }),
     };
     const signatureString = Object.entries(fields)
       .filter(([, value]) => value !== undefined && value !== "")
@@ -170,10 +217,37 @@ app.post("/api/billing/checkout", async (req, res) => {
       .digest("hex");
     const query = new URLSearchParams({ ...fields, signature }).toString();
     const host = process.env.PAYFAST_SANDBOX === "false" ? "www.payfast.co.za" : "sandbox.payfast.co.za";
-    return res.json({ checkoutUrl: `https://${host}/eng/process?${query}` });
+    const payload = {
+      checkoutUrl: `https://${host}/eng/process?${query}`,
+      product,
+      plan: isExport ? null : tier,
+      billingCycle: metadata.billingCycle,
+      returnUrl: fields.return_url,
+      cancelUrl: fields.cancel_url,
+      notifyUrl: fields.notify_url,
+    };
+    return res.status(200).json(payload);
   } catch (err) {
     console.error("Checkout error:", err);
-    return res.status(401).json({ error: err.message || "Checkout failed" });
+    return res.status(err.message?.includes("session") || err.message?.includes("Authorization") ? 401 : 500).json({
+      error: err.message || "Checkout failed",
+    });
+  }
+});
+
+app.post("/api/billing/consume-export", async (req, res) => {
+  try {
+    const user = await getUserFromRequest(req);
+    if (!supabaseAdmin) return res.status(503).json({ error: "Billing is not configured" });
+    const { data, error } = await supabaseAdmin.rpc("consume_sars_export_credit", {
+      target_user_id: user.id,
+    });
+    if (error) throw error;
+    if (!data) return res.status(409).json({ error: "No paid SARS export is available" });
+    return res.json({ consumed: true });
+  } catch (err) {
+    console.error("Export credit error:", err);
+    return res.status(500).json({ error: "Could not authorize SARS export" });
   }
 });
 
@@ -195,15 +269,27 @@ app.post("/api/webhooks/payfast", express.urlencoded({ extended: false }), async
       return res.status(400).send("Invalid signature");
     }
 
-    const userId = body.m_payment_id;
+    const userId = String(body.m_payment_id || "").split(":")[0];
     const tier = body.custom_str1 || "premium";
     const billingCycle = body.custom_str2 || "monthly";
     const amount = Number(body.amount_gross || 0);
 
+    if (!userId || (tier === "sars_export" ? billingCycle !== "one_off" || amount !== SARS_EXPORT_PRICE : !PLAN_PRICING[tier]?.[billingCycle] || billingCycle !== "monthly")) {
+      return res.status(400).send("Invalid payment metadata");
+    }
+
     if (body.payment_status === "COMPLETE") {
-      await applySuccessfulPayment({ userId, tier, billingCycle, amount });
-    } else {
-      await applyFailedPayment({ userId, amount });
+      if (tier === "sars_export") {
+        await applySuccessfulExportPayment({ userId, amount });
+      } else {
+        await applySuccessfulPayment({ userId, tier, billingCycle, amount });
+      }
+    } else if (body.payment_status === "FAILED") {
+      if (tier === "sars_export") {
+        await applyFailedExportPayment({ userId, amount });
+      } else {
+        await applyFailedPayment({ userId, amount });
+      }
     }
 
     res.send("OK");

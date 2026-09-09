@@ -6,12 +6,10 @@ const settingsVehicles = await vehicles();
 const vehicleOptions = settingsVehicles.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.number_plate || "Vehicle")} · ${escapeHtml(`${item.make || ""} ${item.model || ""}`.trim())}</option>`).join("");
 
 const subscriptionState = await syncSubscription(user.id);
-const PLANS = [
-  { tier: "premium", cycle: "monthly", label: "Premium · Monthly", price: "R99/mo" },
-  { tier: "premium", cycle: "annual", label: "Premium · Annual (2 months free)", price: "R990/yr" },
-  { tier: "fleet_starter", cycle: "monthly", label: "Fleet Starter · Monthly", price: "R299/mo" },
-  { tier: "fleet_pro", cycle: "monthly", label: "Fleet Pro · Monthly", price: "R799/mo" },
-];
+const pricingCatalog = await fetch("../pricing.json").then((response) => response.json());
+const PLANS = Object.entries(pricingCatalog.plans).map(([tier, plan]) =>
+  ({ tier, cycle: "monthly", label: `${plan.label} · Monthly`, price: `${pricingCatalog.currency}${plan.monthly}/mo` }),
+);
 const planButtons = PLANS.map(
   (plan) =>
     `<button class="btn btn-secondary" type="button" data-checkout-tier="${plan.tier}" data-checkout-cycle="${plan.cycle}">${escapeHtml(plan.label)} — ${escapeHtml(plan.price)}</button>`,
@@ -47,7 +45,7 @@ await shell("settings", `
     <section class="card" id="billing">
       <div class="card-head"><h2>Subscription &amp; billing</h2></div>
       <p class="row-sub">Current plan: <strong>${escapeHtml(tierLabel(subscriptionState))}</strong> · Payment status: <strong>${escapeHtml(subscriptionState.paymentStatus)}</strong>${subscriptionState.expiryDate ? ` · Renews/expires ${escapeHtml(dateText(subscriptionState.expiryDate))}` : ""}</p>
-      <p class="row-sub">Free tier is limited to ${FREE_TRIP_LIMIT} trips/month and does not include SARS PDF export.</p>
+      <p class="row-sub">Free tier is limited to ${FREE_TRIP_LIMIT} trips/month. Premium and Fleet include SARS PDF exports; Free users can buy one for R${Number(pricingCatalog.sarsExport?.price || 99).toFixed(0)}.</p>
       <div class="form-actions" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">${planButtons}</div>
       <div id="billing-notice" class="notice" hidden></div>
     </section>
@@ -344,9 +342,7 @@ async function startCheckout({ tier, cycle }) {
   showNotice("billing-notice", "Redirecting to secure checkout...");
   try {
     const { data: sessionData } = await supabase.auth.getSession();
-    const apiBase =
-      window.__ENV?.VITE_API_URL ||
-      (window.location.port === "5500" ? "http://localhost:3000" : "");
+    const apiBase = window.__ENV?.VITE_API_URL || "https://logmate.co.za";
     const response = await fetch(`${apiBase}/api/billing/checkout`, {
       method: "POST",
       headers: {

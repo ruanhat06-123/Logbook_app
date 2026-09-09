@@ -77,9 +77,9 @@ export function calculateDistanceFromCoordinates(coordinates) {
 }
 
 /**
- * Format distance for display, rounded to the nearest whole number.
+ * Format distance for display with one decimal place for kilometres.
  * Distances under 1 km are shown in whole meters; anything above is shown
- * in whole kilometres.
+ * in kilometres with one decimal place.
  * @param {number} meters - Distance in meters
  * @param {boolean} imperial - True for miles, false for km (default: false)
  * @returns {string} Formatted distance string
@@ -92,7 +92,7 @@ export function formatDistance(meters, imperial = false) {
   }
   const km = meters / 1000;
   if (km < 1) return `${Math.round(meters)} m`;
-  return `${Math.round(km)} km`;
+  return `${km.toFixed(1)} km`;
 }
 
 /**

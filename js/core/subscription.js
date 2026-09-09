@@ -38,7 +38,7 @@ export async function syncSubscription(userId) {
   try {
     const { data, error } = await supabase
       .from("users")
-      .select("subscription_tier, subscription_expiry_date, payment_status")
+      .select("subscription_tier, subscription_expiry_date, payment_status, export_credits")
       .eq("id", userId)
       .single();
     if (error || !data) return getCachedSubscription();
@@ -47,6 +47,7 @@ export async function syncSubscription(userId) {
       tier: data.subscription_tier || "free",
       expiryDate: data.subscription_expiry_date || null,
       paymentStatus: data.payment_status || "pending",
+      exportCredits: Number(data.export_credits || 0),
       syncedAt: new Date().toISOString(),
     };
     await setLocalStore(CACHE_KEY, state);
@@ -101,7 +102,7 @@ export function isFleetTier(state) {
 }
 
 export function canExportSarsPdf(state) {
-  return isPremiumTier(state);
+  return isPremiumTier(state) || Number(state?.exportCredits || 0) > 0;
 }
 
 /** Days until expiry (negative once past), or null when there's no expiry. */

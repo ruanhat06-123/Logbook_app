@@ -6,7 +6,8 @@ import { computeAnalytics, getCachedAnalytics } from "../core/analytics.js";
 const user = await requireAuth();
 if (!user) throw new Error("Not authenticated");
 const subscriptionState = await getSubscriptionState(user.id);
-const sarsExportAllowed = canExportSarsPdf(subscriptionState);
+let sarsExportAllowed = canExportSarsPdf(subscriptionState);
+const isPaidTier = isPremiumTier(subscriptionState);
 
 try {
   // Fetch vehicles and trips (primary) and fallback trip-like entries from car_logbook
@@ -124,7 +125,7 @@ try {
         <button id="tax-year-button" class="btn btn-secondary" type="button" title="Use the current SARS tax year (1 Mar – end Feb)">Tax year ${currentTaxYear.label}</button>
         <button id="filter-button" class="btn btn-primary">Update report ↗</button>
         <button id="download-button" class="btn btn-secondary">Download CSV ↓</button>
-        <button id="sars-pdf-button" class="btn btn-secondary">${sarsExportAllowed ? "SARS PDF ↓" : "🔒 SARS PDF (Premium)"}</button>
+        <button id="sars-pdf-button" class="btn btn-secondary">${sarsExportAllowed ? "SARS PDF ↓" : "Buy SARS PDF export · R99"}</button>
         <button id="print-button" class="btn btn-secondary">Print report</button>
       </div>
       <div id="report-output"></div>
@@ -272,18 +273,56 @@ try {
    * new window with all SARS-required fields, annual odometer readings,
    * business/personal split, and a retention declaration.
    */
-  sarsPdfBtn?.addEventListener("click", () => {
-    if (!sarsExportAllowed) {
-      window.alert("SARS PDF export is a Premium/Fleet feature. Upgrade from Settings → Subscription & billing.");
-      window.location.href = "settings.html#billing";
-      return;
+  const startExportCheckout = async () => {
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const apiBase = window.__ENV?.VITE_API_URL || "https://logmate.co.za";
+      const response = await fetch(`${apiBase}/api/billing/checkout`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${sessionData.session?.access_token || ""}`,
+        },
+        body: JSON.stringify({ product: "sars_export" }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.checkoutUrl) throw new Error(result.error || "Export checkout could not be started.");
+      window.location.href = result.checkoutUrl;
+    } catch (err) {
+      console.error("Export checkout failed:", err);
+      window.alert(err.message || "Export checkout could not be started.");
     }
+  };
+
+  const consumeExportCredit = async () => {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const apiBase = window.__ENV?.VITE_API_URL || "https://logmate.co.za";
+    const response = await fetch(`${apiBase}/api/billing/consume-export`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${sessionData.session?.access_token || ""}` },
+    });
+    const result = await response.json();
+    if (!response.ok || !result.consumed) throw new Error(result.error || "No paid SARS export is available.");
+  };
+
+  sarsPdfBtn?.addEventListener("click", async () => {
     const rows = filteredRows();
     if (!rows.length) {
       window.alert("No trips in the selected period to export.");
       return;
     }
-
+    if (!sarsExportAllowed) {
+      await startExportCheckout();
+      return;
+    }
+    if (!isPaidTier) {
+      try {
+        await consumeExportCredit();
+      } catch (err) {
+        window.alert(err.message || "No paid SARS export is available.");
+        return;
+      }
+    }
     const startLabel = startDateEl.value || "—";
     const endLabel = endDateEl.value || "—";
     const business = rows.filter((i) => String(i.trip_type) === "business");
