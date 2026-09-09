@@ -22,7 +22,7 @@ app.use((req, res, next) => {
     "http://localhost:5500",
     "http://127.0.0.1:3000",
     "http://localhost:3000",
-    PRODUCTION_BASE_URL,
+    "https://logmate.co.za"
   ]);
   const origin = req.headers.origin;
   if (allowedOrigins.has(origin)) res.setHeader("Access-Control-Allow-Origin", origin);
