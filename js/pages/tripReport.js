@@ -245,7 +245,7 @@ try {
       outputEl.innerHTML = `
         <div class="total-strip" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">
           <div class="total-box"><label>Total trips</label><strong style="display:block">${rows.length}</strong></div>
-          <div class="total-box"><label>Total distance</label><strong style="display:block">${totalDistance.toLocaleString()} km</strong></div>
+          <div class="total-box"><label>Total distance</label><strong style="display:block">${Math.round(totalDistance).toLocaleString("de-DE")} km</strong></div>
           <div class="total-box"><label>Business / personal</label><strong style="display:block">${business.toLocaleString()} / ${personal.toLocaleString()} km</strong></div>
           <div class="total-box"><label>Business use</label><strong style="display:block">${businessPct}%</strong></div>
         </div>
@@ -274,6 +274,7 @@ try {
    * business/personal split, and a retention declaration.
    */
   const startExportCheckout = async () => {
+    setButtonBusy(sarsPdfBtn, true, "Opening checkout…");
     try {
       const { data: sessionData } = await supabase.auth.getSession();
       const apiBase = window.__ENV?.VITE_API_URL || "https://logmate.co.za";
@@ -291,6 +292,8 @@ try {
     } catch (err) {
       console.error("Export checkout failed:", err);
       window.alert(err.message || "Export checkout could not be started.");
+    } finally {
+      setButtonBusy(sarsPdfBtn, false);
     }
   };
 
@@ -396,7 +399,7 @@ try {
       <table><thead><tr><th>Date</th><th>Vehicle</th><th>Type</th><th>Business reason</th><th>Origin</th><th>Destination</th><th>Open (km)</th><th>Close (km)</th><th>Distance (km)</th><th>Anomaly</th></tr></thead><tbody>${tripRowsHtml}</tbody></table>
 
       <div class="summary">
-        <div><strong>Total distance:</strong> ${totalKm.toLocaleString()} km</div>
+        <div><strong>Total distance:</strong> ${Math.round(totalKm).toLocaleString("de-DE")} km</div>
         <div><strong>Business distance:</strong> ${businessKm.toLocaleString()} km</div>
         <div><strong>Personal distance:</strong> ${personalKm.toLocaleString()} km</div>
         <div><strong>Business use:</strong> ${businessPct}%</div>

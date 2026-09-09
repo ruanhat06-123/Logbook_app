@@ -338,7 +338,8 @@ if (window.location.hash === "#billing") {
   document.querySelector("#billing")?.scrollIntoView({ block: "start" });
 }
 
-async function startCheckout({ tier, cycle }) {
+async function startCheckout({ tier, cycle, button }) {
+  setButtonBusy(button, true, "Opening secure checkout…");
   showNotice("billing-notice", "Redirecting to secure checkout...");
   try {
     const { data: sessionData } = await supabase.auth.getSession();
@@ -359,11 +360,13 @@ async function startCheckout({ tier, cycle }) {
   } catch (err) {
     console.error("Checkout failed:", err);
     showNotice("billing-notice", `Could not start checkout: ${err.message}`, true);
+  } finally {
+    setButtonBusy(button, false);
   }
 }
 
 document.querySelectorAll("[data-checkout-tier]").forEach((btn) => {
   btn.addEventListener("click", () =>
-    startCheckout({ tier: btn.dataset.checkoutTier, cycle: btn.dataset.checkoutCycle }),
+    startCheckout({ tier: btn.dataset.checkoutTier, cycle: btn.dataset.checkoutCycle, button: btn }),
   );
 });

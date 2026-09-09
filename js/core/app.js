@@ -17,8 +17,15 @@ import {
 // Initialize offline detection on app startup
 initializeOfflineDetection();
 
-document.documentElement.dataset.theme =
-  localStorage.getItem("theme") || "light";
+const applyTheme = (theme) => {
+  const nextTheme = theme === "dark" ? "dark" : "light";
+  document.documentElement.dataset.theme = nextTheme;
+  document.documentElement.style.colorScheme = nextTheme;
+  localStorage.setItem("theme", nextTheme);
+  return nextTheme;
+};
+
+applyTheme(localStorage.getItem("theme") || "light");
 
 /**
  * Fetch vehicles and attach the latest logbook mileage (from car_logbook refuel entries)
@@ -117,6 +124,25 @@ const escapeHtml = (value) =>
       ],
   );
 
+// Keep async page feedback consistent so users always know whether an action
+// is working, finished, or needs attention.
+const statusMarkup = (message, tone = "info") =>
+  `<div class="app-status app-status-${tone}" role="status" aria-live="polite">${escapeHtml(message)}</div>`;
+
+const setButtonBusy = (button, isBusy, busyLabel = "Working…") => {
+  if (!button) return;
+  if (isBusy) {
+    button.dataset.idleLabel = button.textContent;
+    button.disabled = true;
+    button.setAttribute("aria-busy", "true");
+    button.textContent = busyLabel;
+  } else {
+    button.disabled = false;
+    button.removeAttribute("aria-busy");
+    if (button.dataset.idleLabel) button.textContent = button.dataset.idleLabel;
+  }
+};
+
 /**
  * Render the left navigation and user info
  */
@@ -137,11 +163,13 @@ function renderNav(active, user, subscriptionState) {
         .map((part) => part[0].toUpperCase())
         .join("") || "U";
 
+  const navLink = (key, href, icon, label) =>
+    `<a class="${active === key ? "active" : ""}" href="${href}"${active === key ? ' aria-current="page"' : ""}><span class="nav-icon" aria-hidden="true">${icon}</span>${label}</a>`;
   const fleetLink = isFleetTier(subscriptionState)
-    ? `<a class="${active === "fleet" ? "active" : ""}" href="fleet.html"><span class="nav-icon">⚑</span>Fleet</a>`
+    ? navLink("fleet", "fleet.html", "⚑", "Fleet")
     : "";
 
-  nav.innerHTML = `<div class="brand"><img class="brand-mark" src="../assets/logo.svg" alt="" /> LogMate</div><div class="nav-label">Workspace</div><nav class="nav"><a class="${active === "home" ? "active" : ""}" href="dashboard.html"><span class="nav-icon">⌂</span>Overview</a><a class="${active === "vehicles" ? "active" : ""}" href="vehicles.html"><span class="nav-icon">▣</span>My vehicles</a><a class="${active === "logbook" ? "active" : ""}" href="logbook.html"><span class="nav-icon">＋</span>New fill-up</a><a class="${active === "trip" ? "active" : ""}" href="trip.html"><span class="nav-icon">↗</span>New trip</a><a class="${active === "report" ? "active" : ""}" href="report.html"><span class="nav-icon">▤</span>Fuel reports</a><a class="${active === "trip-report" ? "active" : ""}" href="trip-report.html"><span class="nav-icon">◫</span>Trip reports</a><a class="${active === "analytics" ? "active" : ""}" href="analytics.html"><span class="nav-icon">∿</span>Analytics</a>${fleetLink}<a class="${active === "help" ? "active" : ""}" href="help.html"><span class="nav-icon">?</span>Help</a></nav><a class="nav-settings ${active === "settings" ? "active" : ""}" href="settings.html" aria-label="Settings" title="Settings"><span class="nav-icon" aria-hidden="true">⚙</span><span>Settings</span></a><div class="sidebar-footer"><div class="user-chip"><span class="avatar">${escapeHtml(initials)}</span><div><div class="user-name">${escapeHtml(displayName)}</div><div class="user-role">${escapeHtml(tierLabel(subscriptionState))} account</div></div></div><button class="signout" data-signout>Sign out →</button></div>`;
+  nav.innerHTML = `<div class="brand"><img class="brand-mark" src="../assets/logo.svg" alt="" /> LogMate</div><div class="nav-label">Workspace</div><nav class="nav" aria-label="Main navigation">${navLink("home", "dashboard.html", "⌂", "Overview")}${navLink("vehicles", "vehicles.html", "▣", "My vehicles")}${navLink("logbook", "logbook.html", "＋", "New fill-up")}${navLink("trip", "trip.html", "↗", "New trip")}${navLink("report", "report.html", "▤", "Fuel reports")}${navLink("trip-report", "trip-report.html", "◫", "Trip reports")}${navLink("analytics", "analytics.html", "∿", "Analytics")}${fleetLink}${navLink("help", "help.html", "?", "Help")}</nav><a class="nav-settings ${active === "settings" ? "active" : ""}" href="settings.html"${active === "settings" ? ' aria-current="page"' : ""} aria-label="Settings" title="Settings"><span class="nav-icon" aria-hidden="true">⚙</span><span>Settings</span></a><div class="sidebar-footer"><div class="user-chip"><span class="avatar">${escapeHtml(initials)}</span><div><div class="user-name">${escapeHtml(displayName)}</div><div class="user-role">${escapeHtml(tierLabel(subscriptionState))} account</div></div></div><button class="signout" data-signout>Sign out →</button></div>`;
 }
 
 /**
@@ -172,17 +200,16 @@ async function shell(active, content) {
   const themeToggle = document.createElement("button");
   themeToggle.className = "theme-toggle";
   themeToggle.type = "button";
-  themeToggle.textContent =
-    document.documentElement.dataset.theme === "dark"
-      ? "☼ Light mode"
-      : "☾ Dark mode";
   themeToggle.setAttribute("aria-label", "Toggle color theme");
+  const updateThemeToggle = () => {
+    const isDark = document.documentElement.dataset.theme === "dark";
+    themeToggle.textContent = isDark ? "☼ Light mode" : "☾ Dark mode";
+    themeToggle.setAttribute("aria-pressed", String(isDark));
+  };
+  updateThemeToggle();
   themeToggle.addEventListener("click", () => {
-    const theme =
-      document.documentElement.dataset.theme === "dark" ? "light" : "dark";
-    document.documentElement.dataset.theme = theme;
-    localStorage.setItem("theme", theme);
-    themeToggle.textContent = theme === "dark" ? "☼ Light mode" : "☾ Dark mode";
+    applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
+    updateThemeToggle();
   });
 
   document.querySelector(".sidebar-footer")?.prepend(themeToggle);
@@ -229,4 +256,6 @@ Object.assign(globalThis, {
   isFreeTripLimitReached,
   tierLabel,
   FREE_TRIP_LIMIT,
+  statusMarkup,
+  setButtonBusy,
 });

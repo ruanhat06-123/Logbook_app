@@ -96,39 +96,44 @@ await shell(
   "analytics",
   `
   <style>
-    .analytics-hero { margin-bottom: 20px; }
-    .analytics-hero p { color: var(--muted); max-width: 640px; }
-    .analytics-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
-    .analytics-card h3 { margin: 0 0 2px; font-size: 17px; }
-    .analytics-card .card-sub { color: var(--muted); font-size: 13px; margin-bottom: 14px; }
-    .alert-banner { padding: 12px 16px; border-radius: 10px; margin-bottom: 10px; font-size: 14px; border-left: 4px solid; display: flex; gap: 10px; align-items: flex-start; }
-    .alert-banner .alert-icon { font-size: 17px; line-height: 1.2; }
-    .alert-high { background: #fdecea; border-color: var(--coral); color: #7b241c; }
-    .alert-medium { background: #fef5e7; border-color: var(--yellow); color: #7e5109; }
-    .alert-low { background: #eaf2f8; border-color: var(--teal); color: #1b4f72; }
-    .alert-ok { background: #eafaf1; border-color: var(--mint); color: #145a32; }
-    [data-theme="dark"] .alert-high { background: #3b1512; color: #f5b7b1; }
-    [data-theme="dark"] .alert-medium { background: #3a2c10; color: #f8c471; }
-    [data-theme="dark"] .alert-low { background: #12293a; color: #85c1e9; }
-    [data-theme="dark"] .alert-ok { background: #10301c; color: #7dcea0; }
+    .analytics-hero { display: flex; justify-content: space-between; gap: 24px; margin-bottom: 22px; }
+    .analytics-hero p { color: var(--muted); max-width: 640px; margin: 0; line-height: 1.65; }
+    .analytics-hero-note { color: var(--muted); font-size: 12px; white-space: nowrap; }
+    .analytics-grid { display: grid; gap: 18px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .analytics-card { min-width: 0; border-top: 3px solid var(--line); }
+    .analytics-card:nth-child(1) { border-top-color: var(--teal); }
+    .analytics-card:nth-child(2) { border-top-color: var(--mint); }
+    .analytics-card:nth-child(3) { border-top-color: var(--yellow); }
+    .analytics-card:nth-child(4) { border-top-color: var(--coral); }
+    .analytics-card h3 { margin: 0 0 4px; font-size: 17px; }
+    .analytics-card .card-sub { color: var(--muted); font-size: 12px; margin-bottom: 16px; line-height: 1.5; }
+    .alert-banner { padding: 13px 16px; border: 1px solid var(--line); border-left: 4px solid; border-radius: 5px; margin-bottom: 12px; font-size: 13px; display: flex; gap: 10px; align-items: flex-start; background: var(--surface); }
+    .alert-banner .alert-icon { font-size: 15px; line-height: 1.2; }
+    .alert-high { border-left-color: var(--coral); color: var(--coral); }
+    .alert-medium { border-left-color: var(--yellow); color: var(--ink); }
+    .alert-low { border-left-color: var(--teal); color: var(--ink); }
+    .alert-ok { border-left-color: var(--mint); color: var(--ink); }
     .stat-list { display: grid; gap: 10px; }
     .stat-row { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; align-items: baseline; }
     .stat-row span { color: var(--muted); }
     .stat-row strong { white-space: nowrap; text-align: right; color: var(--ink); }
     .chart-wrap { width: 100%; }
     .chart-wrap svg { width: 100%; height: auto; display: block; }
-    .chart-empty { padding: 26px 10px; text-align: center; color: var(--muted); font-size: 13px; }
+    .chart-empty { min-height: 150px; display: grid; place-items: center; padding: 26px 18px; text-align: center; color: var(--muted); font-size: 13px; border: 1px dashed var(--line); border-radius: 4px; }
     .gauge-wrap { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
     .insight-plain { font-size: 14px; line-height: 1.55; margin: 0 0 10px; color: var(--ink); }
     .anomaly-list { display: grid; gap: 8px; }
-    .anomaly-item { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; font-size: 13.5px; background: var(--surface); }
+    .anomaly-item { display: flex; gap: 10px; align-items: flex-start; padding: 12px; border: 1px solid var(--line); border-radius: 4px; font-size: 13px; background: var(--surface); }
     .anomaly-item .a-icon { font-size: 15px; }
     .anomaly-item .a-date { color: var(--muted); font-size: 12px; margin-top: 2px; }
     .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; margin-left: 6px; }
-    .pill-worse { background: #fdecea; color: #7b241c; }
-    .pill-better { background: #eafaf1; color: #145a32; }
-    [data-theme="dark"] .pill-worse { background: #3b1512; color: #f5b7b1; }
-    [data-theme="dark"] .pill-better { background: #10301c; color: #7dcea0; }
+    .pill-worse { border: 1px solid #d9a39c; color: var(--coral); }
+    .pill-better { border: 1px solid #9cc7ad; color: #21643d; }
+    @media (max-width: 760px) {
+      .analytics-hero { display: block; }
+      .analytics-hero-note { display: block; margin-top: 10px; }
+      .analytics-grid { grid-template-columns: 1fr; }
+    }
   </style>
 
   <header class="topbar">
@@ -137,40 +142,41 @@ await shell(
   </header>
 
   <div class="analytics-hero">
-    <p>LogMate quietly studies your trips, fill-ups, and services to spot anything unusual, predict what's coming, and help you stay on top of your vehicles — all computed on this device.</p>
+    <p>Review the patterns behind your trips, fuel use, and service schedule. These summaries are calculated on this device from the records you have logged.</p>
+    <span class="analytics-hero-note">${tripRows.length} trips · ${fuelRows.length} fill-ups · ${vehicleRows.length} vehicles</span>
   </div>
 
   <div id="analytics-alerts"></div>
 
   <div class="analytics-grid">
-    <section class="card analytics-card">
-      <h3>Fuel efficiency</h3>
+    <section class="card analytics-card" aria-labelledby="efficiency-title">
+      <h3 id="efficiency-title">Fuel efficiency</h3>
       <div class="card-sub">How many kilometres you get per litre, per fill-up</div>
       <div class="chart-wrap" id="efficiency-chart"></div>
       <p class="insight-plain" id="efficiency-insight"></p>
     </section>
 
-    <section class="card analytics-card">
-      <h3>Where your kilometres go</h3>
+    <section class="card analytics-card" aria-labelledby="category-title">
+      <h3 id="category-title">Business and personal distance</h3>
       <div class="card-sub">Business vs personal driving · tax year ${saTaxYear().label}</div>
       <div class="chart-wrap" id="category-chart"></div>
       <p class="insight-plain" id="category-insight"></p>
     </section>
 
-    <section class="card analytics-card">
-      <h3>Service health</h3>
+    <section class="card analytics-card" aria-labelledby="service-title">
+      <h3 id="service-title">Service health</h3>
       <div class="card-sub">How well your vehicles are keeping to their service schedule</div>
       <div class="chart-wrap" id="compliance-gauge"></div>
     </section>
 
-    <section class="card analytics-card">
-      <h3>Looking ahead</h3>
+    <section class="card analytics-card" aria-labelledby="predictions-title">
+      <h3 id="predictions-title">Looking ahead</h3>
       <div class="card-sub">Predictions based on how you actually drive</div>
       <div class="stat-list" id="predictions-list"></div>
     </section>
 
-    <section class="card analytics-card" style="grid-column: 1 / -1">
-      <h3>Things worth a look</h3>
+    <section class="card analytics-card" style="grid-column: 1 / -1" aria-labelledby="anomalies-title">
+      <h3 id="anomalies-title">Things worth a look</h3>
       <div class="card-sub">Unusual trips or fill-ups compared to your own history</div>
       <div id="anomalies-list"></div>
     </section>
@@ -260,11 +266,8 @@ function renderEfficiencyChart(points) {
     .join("");
 
   container.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Fuel efficiency trend">
-    <defs><linearGradient id="effGrad" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="${palette.primary}" stop-opacity="0.22"/><stop offset="100%" stop-color="${palette.primary}" stop-opacity="0"/>
-    </linearGradient></defs>
     ${gridLines}
-    <path d="${areaPath}" fill="url(#effGrad)"/>
+    <path d="${areaPath}" fill="${palette.primary}" fill-opacity="0.08"/>
     <path d="${linePath}" fill="none" stroke="${palette.primary}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
     ${dots}${xLabels}
   </svg>`;
