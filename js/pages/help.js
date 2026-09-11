@@ -44,6 +44,10 @@ const questions = [
   ["Where is my data stored?", "Your account data is stored in the connected Supabase project and is filtered by your signed-in account. Sign out when using a shared device."],
   ["Why can I not see my vehicles or trips?", "Confirm that you are signed into the correct account, refresh the page, and check your connection. Each account only displays records associated with that account."],
   ["How do I install LogMate as a Chrome app?", "Open LogMate over HTTPS in Chrome, then use the install icon in the address bar or Chrome's menu. The installed app uses the LogMate logo and opens in a standalone window."],
+  ["Is LogMate secure and private?", "LogMate uses your browser session and secure Supabase authentication to keep records tied to your signed-in account. The app also supports biometrics on supported devices, and the service avoids exposing unnecessary data beyond the records needed for your logbook. Sign out on shared devices and only enable notifications when you want them."],
+  ["Does LogMate work offline?", "Yes. The app is designed to keep working with cached data and saved pages when your connection drops. You can continue reviewing stored entries and, where supported, keep driving data queued until the app reconnects. The offline page also appears when a connection is unavailable."],
+  ["Can I use LogMate on mobile?", "Yes. The interface is tuned for smaller screens, with larger tap targets, stacked layouts, and mobile-friendly forms. You can install it as a standalone app or use it directly in your mobile browser for quick trip and fuel logging on the go."],
+  ["How do I keep my service reminders and map settings working well?", "Check your browser permissions for notifications and location access. If you deny location access or browser notifications, live trip updates and reminder alerts may not appear until you allow them again. The app stores your chosen map and appearance preferences in the browser for a smoother experience."],
 ];
 
 await shell("help", `

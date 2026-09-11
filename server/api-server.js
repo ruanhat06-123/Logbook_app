@@ -10,6 +10,7 @@ const fetch = require("node-fetch"); // npm i node-fetch@2
 const { createClient } = require("@supabase/supabase-js"); // npm i @supabase/supabase-js
 const pricingCatalog = require("../pricing.json");
 const app = express();
+app.disable("x-powered-by");
 const PRODUCTION_BASE_URL = "https://logmate.co.za";
 const getAppBaseUrl = (req) => {
   if (process.env.APP_BASE_URL) return process.env.APP_BASE_URL.replace(/\/$/, "");
@@ -28,6 +29,12 @@ app.use((req, res, next) => {
   if (allowedOrigins.has(origin)) res.setHeader("Access-Control-Allow-Origin", origin);
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("Permissions-Policy", "geolocation=(self), camera=(), microphone=()" );
+  res.setHeader("Content-Security-Policy", "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' https://*.supabase.co https://*.openrouteservice.org https://*.payfast.co.za; font-src 'self' data:; upgrade-insecure-requests; trusted-types default;");
   if (req.method === "OPTIONS") return res.sendStatus(204);
   next();
 });

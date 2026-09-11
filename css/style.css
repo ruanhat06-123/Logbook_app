@@ -1,21 +1,21 @@
-@import url("https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Inter:wght@400;500;600;700;800&display=swap");
-
 :root {
-  --ink: #1f2933;
-  --muted: #52606d;
-  --paper: #f5f6f7;
+  --ink: #1a2b36;
+  --muted: #4d5f6d;
+  --paper: #f5f7f8;
   --surface: #ffffff;
-  --line: #cbd2d9;
-  --teal: #245a75;
-  --teal-deep: #173f52;
-  --mint: #4d7c8f;
-  --yellow: #9a6700;
-  --coral: #a33a2b;
+  --line: #ccd5dd;
+  --teal: #0f5d7f;
+  --teal-deep: #0b3d52;
+  --mint: #3d788d;
+  --yellow: #8b5a00;
+  --coral: #9d3528;
   --shadow: none;
   --radius-control: 4px;
   --radius-compact: 6px;
   --radius-card: 10px;
   --radius-panel: 14px;
+  --link: #0e5d7d;
+  --focus: rgba(17, 98, 128, 0.22);
 }
 
 [data-theme="dark"] {
@@ -133,15 +133,42 @@
 * {
   box-sizing: border-box;
 }
+html {
+  color-scheme: light;
+}
+img,
+svg {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
 body {
   margin: 0;
   color: var(--ink);
   background: var(--paper);
-  font-family: "Inter", "Segoe UI", sans-serif;
+  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   overflow-x: hidden;
+  line-height: 1.5;
   transition:
     background-color 0.25s ease,
     color 0.25s ease;
+}
+a {
+  color: var(--link);
+}
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+button,
+.btn,
+.nav a,
+.nav-settings,
+.icon-button,
+.password-toggle {
+  min-height: 44px;
 }
 .landing-page {
   min-height: 100vh;
@@ -505,6 +532,7 @@ button:disabled,
   color: var(--teal-deep);
   width: 33px;
   height: 33px;
+  aspect-ratio: 1;
   display: grid;
   place-items: center;
   border-radius: 10px;

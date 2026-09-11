@@ -3,14 +3,18 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>LogMate</title>
+    <meta name="description" content="Sign in to LogMate to review your vehicle mileage, fuel records, trip log, and service reminders securely." />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="theme-color" content="#0b3d52" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' https://*.supabase.co https://*.openrouteservice.org https://*.payfast.co.za; font-src 'self' data:; upgrade-insecure-requests; trusted-types default;" />
+    <title>Log in | LogMate</title>
     <link rel="icon" type="image/svg+xml" href="../assets/logo.svg" />
     <link rel="manifest" href="../manifest.json" />
-    <meta name="theme-color" content="#3A4A66" />
+    <link rel="alternate" hreflang="en" href="https://logmate.co.za/html/login.html" />
     <link rel="stylesheet" href="../css/style.css" />
   </head>
   <body>
-    <div class="auth-page">
+    <main class="auth-page">
       <section class="auth-intro">
         <div class="brand"><img class="brand-mark" src="../assets/logo.svg" alt="" /> LogMate</div>
         <div class="auth-copy">
@@ -59,7 +63,7 @@
           <div class="notice" id="auth-notice" hidden></div>
         </div>
       </section>
-    </div>
+    </main>
     <script type="module" src="../js/pages/auth.js"></script>
   </body>
 </html>
