@@ -62,8 +62,19 @@ let trackingStatusInterval = null;
 let pendingTripData = null;
 let swRegistration = null;
 let lastNotificationUpdateAt = 0;
+let smartWatchId = null;
+let smartMonitorInterval = null;
+let smartMovementCandidateCount = 0;
+let smartLastPosition = null;
+let smartLastMovementAt = 0;
+let smartStarting = false;
+let smartEnding = false;
 const STATUS_UPDATE_INTERVAL_MS = 5000;
 const NOTIFICATION_UPDATE_INTERVAL_MS = 15000;
+const SMART_START_SPEED_MPS = 3;
+const SMART_START_DISTANCE_METERS = 25;
+const SMART_START_CONFIRMATIONS = 2;
+const SMART_STOP_AFTER_MS = 3 * 60 * 1000;
 
 /**
  * Initialize trip UI handlers
@@ -94,6 +105,8 @@ export async function initializeTripUI() {
     endBtn.addEventListener("click", handleEndTrip);
   }
 
+  if (localStorage.getItem("smartTrips") === "on") startSmartTripMonitor();
+
   // Listen for "End trip" action from the notification
   navigator.serviceWorker?.addEventListener("message", (event) => {
     if (event.data?.type === "end-live-trip") {
@@ -108,13 +121,13 @@ export async function initializeTripUI() {
 /**
  * Handle "Start trip" button click
  */
-async function handleStartTrip(event) {
+async function handleStartTrip(event, { automatic = false } = {}) {
   event?.preventDefault?.();
 
   const vehicleSelect = document.getElementById("vehicle");
   const vehicleId = vehicleSelect?.value;
 
-  if (!vehicleId) {
+  if (!vehicleId && !automatic) {
     alert("Please select a vehicle");
     return;
   }
@@ -155,7 +168,9 @@ async function handleStartTrip(event) {
       vehicleId,
       startTime: Date.now(),
       startedAt: new Date().toLocaleString(),
+      automatic,
     };
+    if (automatic) smartLastMovementAt = Date.now();
 
     // Save session to local storage in case of crash
     await setLocalStore("activeTripSession", activeTripSession);
@@ -269,12 +284,13 @@ async function closeTrackingNotification() {
 /**
  * Handle "End trip" button click
  */
-async function handleEndTrip(event) {
+async function handleEndTrip(event, { automatic = false } = {}) {
   event?.preventDefault?.();
 
   try {
     stopTrackingStatusPolling();
 
+    const wasAutomatic = automatic || activeTripSession?.automatic === true;
     const result = await endTripTracking();
 
     if (!result.success) {
@@ -337,6 +353,7 @@ async function handleEndTrip(event) {
       originLabel,
       destinationLabel,
       rawCoordinates: coordinates,
+      automatic: wasAutomatic,
     };
 
     // Store pending trip data so the trip page can pick it up on reload
@@ -349,11 +366,81 @@ async function handleEndTrip(event) {
 
     // Populate the existing trip form with the recorded data
     populateTripForm(tripData);
+    if (wasAutomatic) showSmartTripReview(tripData);
+    smartEnding = false;
   } catch (err) {
     error("Error ending trip:", err);
+    smartEnding = false;
     alert(`Error ending trip: ${err.message}`);
     startTrackingStatusPolling();
   }
+}
+
+function startSmartTripMonitor() {
+  if (smartWatchId !== null || !navigator.geolocation) return;
+  smartLastMovementAt = Date.now();
+  smartWatchId = navigator.geolocation.watchPosition(
+    (position) => {
+      const { latitude, longitude, speed } = position.coords;
+      const timestamp = position.timestamp || Date.now();
+      let distance = 0;
+      if (smartLastPosition) {
+        distance = calculateDistanceFromCoordinates([
+          { latitude: smartLastPosition.latitude, longitude: smartLastPosition.longitude },
+          { latitude, longitude },
+        ]);
+      }
+      const elapsed = smartLastPosition ? Math.max(1, (timestamp - smartLastPosition.timestamp) / 1000) : 0;
+      const moving = Number(speed) >= SMART_START_SPEED_MPS || (elapsed > 0 && distance / elapsed >= SMART_START_SPEED_MPS) || distance >= SMART_START_DISTANCE_METERS;
+      smartLastPosition = { latitude, longitude, timestamp };
+      if (getTrackingStatus().isTracking) {
+        if (moving) smartLastMovementAt = Date.now();
+        return;
+      }
+      if (moving) smartMovementCandidateCount += 1;
+      else smartMovementCandidateCount = 0;
+      if (smartMovementCandidateCount >= SMART_START_CONFIRMATIONS && !smartStarting) {
+        smartStarting = true;
+        smartMovementCandidateCount = 0;
+        handleStartTrip(undefined, { automatic: true }).finally(() => { smartStarting = false; });
+      }
+    },
+    (err) => warn("Smart Trips location monitor:", err.message),
+    { enableHighAccuracy: false, timeout: 30000, maximumAge: 15000 },
+  );
+  smartMonitorInterval = setInterval(() => {
+    if (!smartEnding && getTrackingStatus().isTracking && activeTripSession?.automatic && Date.now() - smartLastMovementAt >= SMART_STOP_AFTER_MS) {
+      smartEnding = true;
+      handleEndTrip(undefined, { automatic: true });
+    }
+  }, 15000);
+}
+
+function showSmartTripReview(tripData) {
+  document.querySelector("[data-smart-review]")?.remove();
+  const vehicleSelect = document.querySelector("#vehicle");
+  const vehicles = [...(vehicleSelect?.options || [])]
+    .filter((option) => option.value)
+    .map((option) => `<option value="${option.value}">${option.textContent}</option>`)
+    .join("");
+  const endOdo = document.querySelector("#end-odo")?.value || "";
+  document.body.insertAdjacentHTML("beforeend", `<div class="smart-review-backdrop" data-smart-review><section class="smart-review" role="dialog" aria-modal="true" aria-labelledby="smart-review-title"><div class="eyebrow">Smart Trips / Review</div><h2 id="smart-review-title">Review your ended trip</h2><p class="row-sub">Smart Trips stopped recording after you stopped moving. Confirm these details before saving the trip.</p><div class="form-grid"><div class="field full"><label for="smart-review-vehicle">Vehicle</label><select id="smart-review-vehicle" required><option value="">Select a vehicle</option>${vehicles}</select></div><div class="field"><label for="smart-review-type">Trip type</label><select id="smart-review-type"><option value="personal">Personal</option><option value="business">Business</option></select></div><div class="field"><label for="smart-review-purpose">Purpose</label><select id="smart-review-purpose" required><option value="">Select purpose</option><option value="commute">Commute</option><option value="errand">Errand</option><option value="delivery">Delivery</option><option value="client_meeting">Client meeting</option><option value="other">Other</option></select></div><div class="field full"><label for="smart-review-end-odo">End odometer (km)</label><input id="smart-review-end-odo" type="number" min="0" step="1" value="${endOdo}" required></div></div><label class="setting-check"><input id="smart-review-confirm" type="checkbox"> I confirm the end odometer is correct.</label><div class="smart-review-actions"><button class="btn btn-primary" type="button" data-smart-confirm>Confirm details</button><button class="btn btn-secondary" type="button" data-smart-dismiss>Keep editing</button></div></section></div>`);
+  const review = document.querySelector("[data-smart-review]");
+  review.querySelector("[data-smart-confirm]").addEventListener("click", () => {
+    const selectedVehicle = review.querySelector("#smart-review-vehicle").value;
+    const purpose = review.querySelector("#smart-review-purpose").value;
+    const confirmed = review.querySelector("#smart-review-confirm").checked;
+    if (!selectedVehicle || !purpose || !confirmed) {
+      review.querySelector(".row-sub").textContent = "Select a vehicle and purpose, then confirm the end odometer before continuing.";
+      return;
+    }
+    document.querySelector("#vehicle").value = selectedVehicle;
+    document.querySelector("#trip-type").value = review.querySelector("#smart-review-type").value;
+    document.querySelector("#purpose").value = purpose;
+    document.querySelector("#end-odo").value = review.querySelector("#smart-review-end-odo").value;
+    review.remove();
+  });
+  review.querySelector("[data-smart-dismiss]").addEventListener("click", () => review.remove());
 }
 
 /**

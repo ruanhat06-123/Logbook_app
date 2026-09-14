@@ -76,6 +76,7 @@ await shell("settings", `
       </div>
       <label class="setting-check"><input id="service-notifications" type="checkbox"> Service reminder notifications</label>
       <label class="setting-check"><input id="trip-notifications" type="checkbox"> Live trip tracking notifications <small class="row-sub" style="display:block;margin-top:4px">Shows your current trip distance while you drive, with an End trip action.</small></label>
+      <label class="setting-check"><input id="smart-trips" type="checkbox"> Smart Trips <small class="row-sub" style="display:block;margin-top:4px">Automatically starts after sustained movement and prompts you to review details when you stop.</small></label>
     </section>
     <section class="card">
       <div class="card-head"><h2>Map preferences</h2></div>
@@ -143,6 +144,12 @@ tripNotifications.addEventListener("change", async () => {
   if (tripNotifications.checked && "Notification" in window && Notification.permission === "default") {
     await Notification.requestPermission();
   }
+});
+
+const smartTrips = document.querySelector("#smart-trips");
+smartTrips.checked = localStorage.getItem("smartTrips") === "on";
+smartTrips.addEventListener("change", () => {
+  localStorage.setItem("smartTrips", smartTrips.checked ? "on" : "off");
 });
 
 // ---------- Biometric sign-in management ----------

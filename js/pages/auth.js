@@ -403,25 +403,38 @@ form.addEventListener("submit", async (event) => {
     button.disabled = false;
     return;
   }
-  const result = signup
-    ? await supabase.auth.signUp({
-        email,
-        password: passwordValue,
-        options: {
-          data: {
-            first_name: firstName.value.trim(),
-            surname: surname.value.trim(),
-            full_name: `${firstName.value.trim()} ${surname.value.trim()}`,
+  let result;
+  try {
+    result = signup
+      ? await supabase.auth.signUp({
+          email,
+          password: passwordValue,
+          options: {
+            data: {
+              first_name: firstName.value.trim(),
+              surname: surname.value.trim(),
+              full_name: `${firstName.value.trim()} ${surname.value.trim()}`,
+            },
           },
-        },
-      })
-    : await supabase.auth.signInWithPassword({
-        email,
-        password: passwordValue,
-      });
+        })
+      : await supabase.auth.signInWithPassword({
+          email,
+          password: passwordValue,
+        });
+  } catch (error) {
+    console.error("Authentication request failed", error);
+    notice.hidden = false;
+    notice.textContent =
+      "Sign-in is temporarily unavailable. Check your internet connection and try again.";
+    button.disabled = false;
+    return;
+  }
   if (result.error) {
     notice.hidden = false;
-    notice.textContent = result.error.message;
+    notice.textContent =
+      /fetch/i.test(result.error.message || "")
+        ? "Sign-in is temporarily unavailable. Check your internet connection and try again."
+        : result.error.message;
     button.disabled = false;
     return;
   }
