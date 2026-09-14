@@ -37,6 +37,10 @@ await shell("settings", `
     <button class="btn btn-secondary" type="button" data-settings-category="security" aria-selected="false">Security</button>
     <button class="btn btn-secondary" type="button" data-settings-category="data" aria-selected="false">Data &amp; privacy</button>
   </nav>
+  <div class="field settings-search-field">
+    <label for="settings-search">Search settings</label>
+    <input id="settings-search" type="search" placeholder="Search by setting or keyword" autocomplete="off">
+  </div>
   <div class="grid two-col" id="settings-sections">
     <section class="card" data-settings-section="account">
       <div class="card-head"><h2>Account details</h2></div>
@@ -159,6 +163,7 @@ setupTermsConsent();
 
 const settingsCategoryButtons = [...document.querySelectorAll("[data-settings-category]")];
 const settingsSections = [...document.querySelectorAll("[data-settings-section]")];
+const settingsSearch = document.querySelector("#settings-search");
 let activeSettingsCategory = window.location.hash === "#billing"
   ? "billing"
   : localStorage.getItem("settingsCategory") || "account";
@@ -176,6 +181,22 @@ const showSettingsCategory = (category) => {
   });
   localStorage.setItem("settingsCategory", activeSettingsCategory);
 };
+
+const applySettingsSearch = () => {
+  const query = settingsSearch.value.trim().toLowerCase();
+  if (!query) {
+    showSettingsCategory(activeSettingsCategory);
+    return;
+  }
+
+  settingsCategoryButtons.forEach((button) => button.setAttribute("aria-selected", "false"));
+  settingsSections.forEach((section) => {
+    const unavailableSmartSettings = section.id === "smart-feature-settings" && !smartTrips.checked;
+    section.hidden = unavailableSmartSettings || !section.textContent.toLowerCase().includes(query);
+  });
+};
+
+settingsSearch.addEventListener("input", applySettingsSearch);
 
 settingsCategoryButtons.forEach((button) => {
   button.addEventListener("click", () => {
@@ -232,6 +253,7 @@ const updateSmartFeatureSettingsVisibility = () => {
   if (smartFeatureSettings) {
     smartFeatureSettings.hidden = !smartTrips.checked || activeSettingsCategory !== "activity";
   }
+  if (settingsSearch.value) applySettingsSearch();
 };
 updateSmartFeatureSettingsVisibility();
 smartTrips.addEventListener("change", async () => {
