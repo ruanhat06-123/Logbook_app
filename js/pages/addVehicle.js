@@ -17,6 +17,7 @@ await shell("add-vehicle", `
       <div class="field"><label for="plate">Number plate</label><input name="plate" id="plate" required></div>
       <div class="field"><label for="make">Make</label><input name="make" id="make" required></div>
       <div class="field"><label for="model">Model</label><input name="model" id="model" required></div>
+        <div class="field full"><label for="primary-use">Main use</label><select name="primary-use" id="primary-use" required><option value="personal">Mostly personal</option><option value="business">Mostly business</option></select></div>
       <div class="field"><label for="year">Year</label><input name="year" id="year" type="number" min="1886" max="2200"></div>
       <div class="field"><label for="last-service">Last service mileage (km)</label><input name="last-service" id="last-service" type="number" min="0"></div>
       <div class="field"><label for="next-service">Next service mileage (km)</label><input name="next-service" id="next-service" type="number" min="0"></div>
@@ -35,6 +36,7 @@ document.querySelector("#vehicle-form").addEventListener("submit", async (event)
     number_plate: form.plate.value.trim().toUpperCase(),
     make: form.make.value.trim(),
     model: form.model.value.trim(),
+      primary_use: form["primary-use"].value,
     year: form.year.value || null,
     last_service_mileage: form["last-service"].value ? Number(form["last-service"].value) : null,
     current_mileage: Number(form.mileage.value),

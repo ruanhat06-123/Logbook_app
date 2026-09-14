@@ -156,6 +156,7 @@ if (user) {
         number_plate: backdrop.querySelector("#add-plate").value.trim().toUpperCase(),
         make: backdrop.querySelector("#add-make").value.trim(),
         model: backdrop.querySelector("#add-model").value.trim(),
+          primary_use: backdrop.querySelector("#add-primary-use").value,
         year: backdrop.querySelector("#add-year").value || null,
         last_service_mileage: backdrop.querySelector("#add-last-service").value ? Number(backdrop.querySelector("#add-last-service").value) : null,
         current_mileage: Number(backdrop.querySelector("#add-mileage").value),

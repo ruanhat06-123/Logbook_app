@@ -3,15 +3,27 @@
   "private": true,
   "version": "1.0.0",
   "scripts": {
-    "start": "node server/api-server.js"
+    "start": "node server/api-server.js",
+    "cap:build": "node scripts/capacitor-build.mjs",
+    "cap:sync": "npm run cap:build && node node_modules/@capacitor/cli/bin/capacitor sync",
+    "cap:android": "node node_modules/@capacitor/cli/bin/capacitor open android",
+    "cap:ios": "node node_modules/@capacitor/cli/bin/capacitor open ios"
   },
   "engines": {
     "node": ">=20"
   },
   "dependencies": {
+    "@capacitor-community/background-geolocation": "^1.2.26",
+    "@capacitor/core": "^7.4.4",
     "@supabase/supabase-js": "^2.45.4",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "node-fetch": "^2.7.0"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^7.4.4",
+    "@capacitor/cli": "^7.4.4",
+    "@capacitor/ios": "^7.4.4",
+    "typescript": "^7.0.2"
   }
 }

@@ -15,10 +15,8 @@ const CACHE_KEY = "analyticsResults";
 
 /** Number of recent fill-ups used as the fuel-consumption baseline. */
 const FUEL_BASELINE_WINDOW = 5;
-/** Trip mileage anomaly band (±20% of the historical average). */
-const TRIP_ANOMALY_BAND = 0.2;
-/** Fuel consumption anomaly band (±20% of the baseline average). */
-const FUEL_ANOMALY_BAND = 0.2;
+/** Default anomaly band (±20% of the historical or baseline average). */
+const DEFAULT_ANOMALY_MARGIN_PCT = 20;
 /** Default fuel-efficiency drop alert threshold (percent). */
 const DEFAULT_EFFICIENCY_DROP_PCT = 15;
 /** Service prediction lead distance in km. */
@@ -30,6 +28,14 @@ const SERVICE_LEAD_KM = 1000;
 export function getEfficiencyDropThreshold() {
   const stored = Number(localStorage.getItem("analyticsEfficiencyDropPct"));
   return Number.isFinite(stored) && stored > 0 ? stored : DEFAULT_EFFICIENCY_DROP_PCT;
+}
+
+/** Get the user-configured anomaly margin for trips and fuel entries. */
+export function getAnomalyMarginPct() {
+  const stored = Number(localStorage.getItem("analyticsAnomalyMarginPct"));
+  return Number.isFinite(stored) && stored >= 5 && stored <= 100
+    ? stored
+    : DEFAULT_ANOMALY_MARGIN_PCT;
 }
 
 /**
@@ -81,8 +87,9 @@ function detectTripAnomalies(trips) {
     const distances = vehicleTrips.map(tripDistance).filter((d) => d > 0);
     if (distances.length < 3) return; // need history to establish an average
     const average = distances.reduce((s, d) => s + d, 0) / distances.length;
-    const lower = average * (1 - TRIP_ANOMALY_BAND);
-    const upper = average * (1 + TRIP_ANOMALY_BAND);
+    const anomalyBand = getAnomalyMarginPct() / 100;
+    const lower = average * (1 - anomalyBand);
+    const upper = average * (1 + anomalyBand);
 
     vehicleTrips.forEach((trip) => {
       const distance = tripDistance(trip);
@@ -132,8 +139,9 @@ function detectFuelAnomalies(fuelEntries) {
       if (history.length >= 3) {
         const window = history.slice(-FUEL_BASELINE_WINDOW);
         const baseline = window.reduce((s, v) => s + v, 0) / window.length;
-        const lower = baseline * (1 - FUEL_ANOMALY_BAND);
-        const upper = baseline * (1 + FUEL_ANOMALY_BAND);
+        const anomalyBand = getAnomalyMarginPct() / 100;
+        const lower = baseline * (1 - anomalyBand);
+        const upper = baseline * (1 + anomalyBand);
         if (consumption < lower || consumption > upper) {
           const deviationPct = ((consumption - baseline) / baseline) * 100;
           anomalies.push({

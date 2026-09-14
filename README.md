@@ -119,7 +119,7 @@ server/sql/subscriptions.sql  Supabase migration: users table, RLS, triggers
 
 ## Data model (Supabase)
 
-- **vehicles** — number plate, make, model, year, current_mileage, last_service_mileage, next_service_mileage, user_id.
+- **vehicles** — number plate, make, model, year, primary_use (`personal` or `business`), current_mileage, last_service_mileage, next_service_mileage, user_id.
 - **trips** — vehicle_id, trip_type, mileage_start, mileage_end, trip_distance_km, created_at, trip_origin, trip_destination, trip_purpose.
 - **car_logbook** — entries (entry_type "refuel"/"trip"); refuel rows carry current_mileage, fuel_amount_liters, fuel_price, total_cost, fuel_type, fuel_consumption_l_per_100km, fuel_efficiency_km_per_l, fuel_location.
 - **service_records** — vehicle_id, title, service_date, mileage, invoice_amount, notes.
@@ -139,6 +139,10 @@ The trip report captures and exports everything SARS requires: trip date, openin
   Verify the deployed API with `https://logmate.co.za/api/health`; it should return JSON with `ok: true`. The Five Server frontend on port 5500 calls the production API at `https://logmate.co.za/api/billing/checkout`.
 3. Run [server/sql/subscriptions.sql](server/sql/subscriptions.sql) once in the Supabase SQL editor to add the `users`/`subscription_events` tables, triggers, and RLS policies.
 4. Ensure [js/core/env.js](js/core/env.js) exposes `VITE_MAPBOX_TOKEN`.
+
+## Native mobile app
+
+The web app can be packaged for Android and iOS with Capacitor. Install Node dependencies, build the static web assets, and sync the native projects with `npm run cap:sync`. Open Android Studio with `npm run cap:android`; iOS requires macOS with Xcode and CocoaPods before opening with `npm run cap:ios`. The native background-geolocation plugin keeps an active trip and Smart Trips movement monitor running with the platform's required location notification and permissions. Users must grant background location permission, and operating-system battery restrictions can still affect tracking.
 
 ## Notes & conventions
 

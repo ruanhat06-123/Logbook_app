@@ -18,6 +18,11 @@ import {
   formatDistance,
 } from "./distanceCalculator.js";
 import { getLocalStore, setLocalStore } from "./localStore.js";
+import {
+  isNativeBackgroundLocationAvailable,
+  startNativeBackgroundWatcher,
+  stopNativeBackgroundWatcher,
+} from "./nativeBackgroundGeolocation.js";
 
 const log = (...args) => console.log("[Trip UI]", ...args);
 const warn = (...args) => console.warn("[Trip UI]", ...args);
@@ -63,6 +68,7 @@ let pendingTripData = null;
 let swRegistration = null;
 let lastNotificationUpdateAt = 0;
 let smartWatchId = null;
+let nativeSmartWatcherId = null;
 let smartMonitorInterval = null;
 let smartMovementCandidateCount = 0;
 let smartLastPosition = null;
@@ -71,10 +77,22 @@ let smartStarting = false;
 let smartEnding = false;
 const STATUS_UPDATE_INTERVAL_MS = 5000;
 const NOTIFICATION_UPDATE_INTERVAL_MS = 15000;
-const SMART_START_SPEED_MPS = 3;
-const SMART_START_DISTANCE_METERS = 25;
+const DEFAULT_SMART_START_SPEED_MPS = 3;
+const DEFAULT_SMART_START_DISTANCE_METERS = 25;
 const SMART_START_CONFIRMATIONS = 2;
-const SMART_STOP_AFTER_MS = 3 * 60 * 1000;
+const DEFAULT_SMART_STOP_AFTER_MINUTES = 3;
+
+const boundedLocalNumber = (key, fallback, min, max) => {
+  const value = Number(localStorage.getItem(key));
+  return Number.isFinite(value) && value >= min && value <= max ? value : fallback;
+};
+
+const smartStartSpeedMps = () =>
+  boundedLocalNumber("smartTripStartSpeedKph", DEFAULT_SMART_START_SPEED_MPS * 3.6, 5, 80) / 3.6;
+const smartStartDistanceMeters = () =>
+  boundedLocalNumber("smartTripStartDistanceMeters", DEFAULT_SMART_START_DISTANCE_METERS, 5, 200);
+const smartStopAfterMs = () =>
+  boundedLocalNumber("smartTripStopMinutes", DEFAULT_SMART_STOP_AFTER_MINUTES, 1, 30) * 60 * 1000;
 
 /**
  * Initialize trip UI handlers
@@ -175,8 +193,8 @@ async function handleStartTrip(event, { automatic = false } = {}) {
     // Save session to local storage in case of crash
     await setLocalStore("activeTripSession", activeTripSession);
 
-    // Show the live tracking notification
-    await showTrackingNotification(0);
+      // Show the live tracking notification with smart flag
+      await showTrackingNotification(0, { smart: automatic });
   } catch (err) {
     error("Error starting trip:", err);
     alert(`Error starting trip: ${err.message}`);
@@ -208,7 +226,9 @@ function startTrackingStatusPolling() {
     }
 
     // Update the persistent notification with the current distance
-    await showTrackingNotification(currentDistance);
+    await showTrackingNotification(currentDistance, {
+      smart: activeTripSession?.automatic === true,
+    });
   }, STATUS_UPDATE_INTERVAL_MS);
 }
 
@@ -228,8 +248,8 @@ function stopTrackingStatusPolling() {
  * notification can show an "End trip" action; falls back to a plain
  * Notification otherwise.
  */
-async function showTrackingNotification(distanceMeters) {
-  if (localStorage.getItem("tripNotifications") === "off") return;
+async function showTrackingNotification(distanceMeters, { smart = false } = {}) {
+    if (!smart && localStorage.getItem("tripNotifications") === "off") return;
   if (!("Notification" in window)) return;
   if (Notification.permission === "default") {
     try {
@@ -254,11 +274,12 @@ async function showTrackingNotification(distanceMeters) {
   };
 
   try {
-    if (swRegistration?.showNotification) {
-      await swRegistration.showNotification("Trip started", options);
-    } else {
-      new Notification("Trip started", options);
-    }
+      const title = smart ? "Smart Trip started" : "Trip started";
+      if (swRegistration?.showNotification) {
+        await swRegistration.showNotification(title, options);
+      } else {
+        new Notification(title, options);
+      }
   } catch (err) {
     warn("Failed to show tracking notification:", err);
   }
@@ -368,6 +389,9 @@ async function handleEndTrip(event, { automatic = false } = {}) {
     populateTripForm(tripData);
     if (wasAutomatic) showSmartTripReview(tripData);
     smartEnding = false;
+    if (wasAutomatic && localStorage.getItem("smartTrips") === "on") {
+      startSmartTripMonitor().catch((err) => warn("Smart Trips monitor restart failed:", err));
+    }
   } catch (err) {
     error("Error ending trip:", err);
     smartEnding = false;
@@ -376,40 +400,63 @@ async function handleEndTrip(event, { automatic = false } = {}) {
   }
 }
 
-function startSmartTripMonitor() {
-  if (smartWatchId !== null || !navigator.geolocation) return;
+function handleSmartLocation({ latitude, longitude, speed, timestamp }) {
+  let distance = 0;
+  if (smartLastPosition) {
+    distance = calculateDistanceFromCoordinates([
+      { latitude: smartLastPosition.latitude, longitude: smartLastPosition.longitude },
+      { latitude, longitude },
+    ]);
+  }
+  const elapsed = smartLastPosition ? Math.max(1, (timestamp - smartLastPosition.timestamp) / 1000) : 0;
+  const startSpeed = smartStartSpeedMps();
+  const moving = Number(speed) >= startSpeed || (elapsed > 0 && distance / elapsed >= startSpeed) || distance >= smartStartDistanceMeters();
+  smartLastPosition = { latitude, longitude, timestamp };
+  if (getTrackingStatus().isTracking) {
+    if (moving) smartLastMovementAt = Date.now();
+    return;
+  }
+  if (moving) smartMovementCandidateCount += 1;
+  else smartMovementCandidateCount = 0;
+  if (smartMovementCandidateCount >= SMART_START_CONFIRMATIONS && !smartStarting) {
+    smartStarting = true;
+    smartMovementCandidateCount = 0;
+    if (nativeSmartWatcherId !== null) {
+      stopNativeBackgroundWatcher(nativeSmartWatcherId).catch(() => {});
+      nativeSmartWatcherId = null;
+    }
+    handleStartTrip(undefined, { automatic: true }).finally(() => { smartStarting = false; });
+  }
+}
+
+async function startSmartTripMonitor() {
+  if (smartWatchId !== null || nativeSmartWatcherId !== null) return;
   smartLastMovementAt = Date.now();
-  smartWatchId = navigator.geolocation.watchPosition(
-    (position) => {
-      const { latitude, longitude, speed } = position.coords;
-      const timestamp = position.timestamp || Date.now();
-      let distance = 0;
-      if (smartLastPosition) {
-        distance = calculateDistanceFromCoordinates([
-          { latitude: smartLastPosition.latitude, longitude: smartLastPosition.longitude },
-          { latitude, longitude },
-        ]);
-      }
-      const elapsed = smartLastPosition ? Math.max(1, (timestamp - smartLastPosition.timestamp) / 1000) : 0;
-      const moving = Number(speed) >= SMART_START_SPEED_MPS || (elapsed > 0 && distance / elapsed >= SMART_START_SPEED_MPS) || distance >= SMART_START_DISTANCE_METERS;
-      smartLastPosition = { latitude, longitude, timestamp };
-      if (getTrackingStatus().isTracking) {
-        if (moving) smartLastMovementAt = Date.now();
-        return;
-      }
-      if (moving) smartMovementCandidateCount += 1;
-      else smartMovementCandidateCount = 0;
-      if (smartMovementCandidateCount >= SMART_START_CONFIRMATIONS && !smartStarting) {
-        smartStarting = true;
-        smartMovementCandidateCount = 0;
-        handleStartTrip(undefined, { automatic: true }).finally(() => { smartStarting = false; });
-      }
-    },
-    (err) => warn("Smart Trips location monitor:", err.message),
-    { enableHighAccuracy: false, timeout: 30000, maximumAge: 15000 },
-  );
-  smartMonitorInterval = setInterval(() => {
-    if (!smartEnding && getTrackingStatus().isTracking && activeTripSession?.automatic && Date.now() - smartLastMovementAt >= SMART_STOP_AFTER_MS) {
+  if (isNativeBackgroundLocationAvailable()) {
+    nativeSmartWatcherId = await startNativeBackgroundWatcher(
+      (location) => handleSmartLocation({
+        latitude: location.latitude,
+        longitude: location.longitude,
+        speed: location.speed,
+        timestamp: location.time || Date.now(),
+      }),
+      (err) => warn("Smart Trips native location monitor:", err),
+    );
+  }
+  if (nativeSmartWatcherId === null && navigator.geolocation) {
+    smartWatchId = navigator.geolocation.watchPosition(
+      (position) => handleSmartLocation({
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+        speed: position.coords.speed,
+        timestamp: position.timestamp || Date.now(),
+      }),
+      (err) => warn("Smart Trips location monitor:", err.message),
+      { enableHighAccuracy: false, timeout: 30000, maximumAge: 15000 },
+    );
+  }
+  if (!smartMonitorInterval) smartMonitorInterval = setInterval(() => {
+    if (!smartEnding && getTrackingStatus().isTracking && activeTripSession?.automatic && Date.now() - smartLastMovementAt >= smartStopAfterMs()) {
       smartEnding = true;
       handleEndTrip(undefined, { automatic: true });
     }

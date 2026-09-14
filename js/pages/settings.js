@@ -17,6 +17,11 @@ const planButtons = PLANS.map(
 ).join("");
 
 await shell("settings", `
+  <style>
+    .settings-category-nav { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+    .settings-category-nav button[aria-selected="true"] { background: var(--teal-deep); color: #fff; border-color: var(--teal-deep); }
+    .settings-category-nav button { min-height: 40px; }
+  </style>
   <header class="topbar">
     <div>
       <div class="eyebrow">Account preferences</div>
@@ -24,8 +29,16 @@ await shell("settings", `
     </div>
     <div class="top-date"><strong>YOUR ACCOUNT</strong>Personal preferences</div>
   </header>
-  <div class="grid two-col">
-    <section class="card">
+  <nav class="settings-category-nav" aria-label="Settings categories">
+    <button class="btn btn-secondary" type="button" data-settings-category="account" aria-selected="true">Account</button>
+    <button class="btn btn-secondary" type="button" data-settings-category="billing" aria-selected="false">Billing</button>
+    <button class="btn btn-secondary" type="button" data-settings-category="appearance" aria-selected="false">Appearance</button>
+    <button class="btn btn-secondary" type="button" data-settings-category="activity" aria-selected="false">Trips &amp; analytics</button>
+    <button class="btn btn-secondary" type="button" data-settings-category="security" aria-selected="false">Security</button>
+    <button class="btn btn-secondary" type="button" data-settings-category="data" aria-selected="false">Data &amp; privacy</button>
+  </nav>
+  <div class="grid two-col" id="settings-sections">
+    <section class="card" data-settings-section="account">
       <div class="card-head"><h2>Account details</h2></div>
       <form id="email-form" class="form-grid">
         <div class="field full"><label for="email">Email address</label><input id="email" type="email" value="${escapeHtml(user.email || "")}" required autocomplete="email"></div>
@@ -33,7 +46,7 @@ await shell("settings", `
       </form>
       <div id="email-notice" class="notice" hidden></div>
     </section>
-    <section class="card">
+    <section class="card" data-settings-section="account">
       <div class="card-head"><h2>Change password</h2></div>
       <form id="password-form" class="form-grid">
         <div class="field full"><label for="current-password">Current password</label><div class="password-field"><input id="current-password" type="password" required autocomplete="current-password"><button class="password-toggle" type="button" data-password-toggle="current-password" aria-label="Show current password">Show</button></div></div>
@@ -43,19 +56,19 @@ await shell("settings", `
       </form>
       <div id="password-notice" class="notice" hidden></div>
     </section>
-    <section class="card" id="billing">
+    <section class="card" id="billing" data-settings-section="billing">
       <div class="card-head"><h2>Subscription &amp; billing</h2></div>
       <p class="row-sub">Current plan: <strong>${escapeHtml(tierLabel(subscriptionState))}</strong> · Payment status: <strong>${escapeHtml(subscriptionState.paymentStatus)}</strong>${subscriptionState.expiryDate ? ` · Renews/expires ${escapeHtml(dateText(subscriptionState.expiryDate))}` : ""}</p>
       <p class="row-sub">Free tier is limited to ${FREE_TRIP_LIMIT} trips/month. Premium and Fleet include SARS PDF exports; Free users can buy one for R${Number(pricingCatalog.sarsExport?.price || 99).toFixed(0)}.</p>
       <div class="form-actions" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">${planButtons}</div>
       <div id="billing-notice" class="notice" hidden></div>
     </section>
-    <section class="card">
+    <section class="card" data-settings-section="appearance">
       <div class="card-head"><h2>Appearance</h2></div>
       <p class="row-sub">Choose the color theme used across your logbook.</p>
       <button id="settings-theme-toggle" class="btn btn-secondary" type="button"></button>
     </section>
-    <section class="card">
+    <section class="card" data-settings-section="security">
       <div class="card-head"><h2>Biometric sign-in</h2></div>
       <p class="row-sub">Unlock your LogMate session on this device with your fingerprint or face instead of typing your password.</p>
       <div id="biometric-status" class="notice" hidden></div>
@@ -64,7 +77,7 @@ await shell("settings", `
         <button id="biometric-disable" class="btn btn-secondary" type="button" hidden>Disable biometrics</button>
       </div>
     </section>
-    <section class="card">
+    <section class="card" data-settings-section="activity">
       <div class="card-head"><h2>Popular settings</h2></div>
       <div class="field">
         <label for="default-trip-type">Default trip type</label>
@@ -78,14 +91,50 @@ await shell("settings", `
       <label class="setting-check"><input id="trip-notifications" type="checkbox"> Live trip tracking notifications <small class="row-sub" style="display:block;margin-top:4px">Shows your current trip distance while you drive, with an End trip action.</small></label>
       <label class="setting-check"><input id="smart-trips" type="checkbox"> Smart Trips <small class="row-sub" style="display:block;margin-top:4px">Automatically starts after sustained movement and prompts you to review details when you stop.</small></label>
     </section>
-    <section class="card">
+    ${isPremiumTier(subscriptionState) ? `<section class="card" id="analytics-feature-settings" data-settings-section="activity">
+      <div class="card-head"><h2>Analytics sensitivity</h2></div>
+      <p class="row-sub">Adjust how much variation LogMate allows before analytics flags an unusual trip or fill-up.</p>
+      <div class="form-grid">
+        <div class="field">
+          <label for="analytics-anomaly-margin">Analytics anomaly margin (%)</label>
+          <input id="analytics-anomaly-margin" type="number" min="5" max="100" step="1" inputmode="numeric">
+          <small class="field-help">A larger margin produces fewer anomaly alerts.</small>
+        </div>
+        <div class="field">
+          <label for="analytics-efficiency-margin">Fuel efficiency drop alert (%)</label>
+          <input id="analytics-efficiency-margin" type="number" min="5" max="100" step="1" inputmode="numeric">
+          <small class="field-help">Alert when efficiency drops by at least this percentage.</small>
+        </div>
+      </div>
+      <div id="analytics-settings-notice" class="notice" hidden></div>
+    </section>
+    <section class="card" id="smart-feature-settings" data-settings-section="activity" hidden>
+      <div class="card-head"><h2>Smart Trips sensitivity</h2></div>
+      <p class="row-sub">Adjust how quickly Smart Trips starts or ends tracking.</p>
+      <div class="form-grid">
+        <div class="field">
+          <label for="smart-start-speed">Smart Trips start speed (km/h)</label>
+          <input id="smart-start-speed" type="number" min="5" max="80" step="0.5" inputmode="decimal">
+        </div>
+        <div class="field">
+          <label for="smart-start-distance">Smart Trips movement margin (m)</label>
+          <input id="smart-start-distance" type="number" min="5" max="200" step="1" inputmode="numeric">
+        </div>
+        <div class="field">
+          <label for="smart-stop-minutes">Smart Trips stop margin (minutes)</label>
+          <input id="smart-stop-minutes" type="number" min="1" max="30" step="1" inputmode="numeric">
+        </div>
+      </div>
+      <div id="smart-settings-notice" class="notice" hidden></div>
+    </section>` : ""}
+    <section class="card" data-settings-section="appearance">
       <div class="card-head"><h2>Map preferences</h2></div>
       <div class="field">
         <label for="map-theme">Map theme</label>
         <select id="map-theme"><option value="">Follow system</option><option value="light">Light</option><option value="dark">Dark</option></select>
       </div>
     </section>
-    <section class="card">
+    <section class="card" data-settings-section="data">
       <div class="card-head"><h2>Offline data</h2></div>
       <p class="row-sub">LogMate stores trip coordinates and cached data on this device so you can work offline. Clear it if you're switching accounts or want to free up space.</p>
       <div class="form-actions" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
@@ -93,7 +142,7 @@ await shell("settings", `
       </div>
       <div id="offline-data-notice" class="notice" hidden></div>
     </section>
-    <section class="card terms-settings-card">
+    <section class="card terms-settings-card" data-settings-section="data">
       <div class="card-head"><h2>Terms and Conditions</h2></div>
       <p class="row-sub">Review the terms governing LogMate, your vehicle records, SARS-supporting reports, privacy and copyright.</p>
       <div class="consent-warning" data-terms-warning role="alert">
@@ -107,6 +156,36 @@ await shell("settings", `
 `);
 
 setupTermsConsent();
+
+const settingsCategoryButtons = [...document.querySelectorAll("[data-settings-category]")];
+const settingsSections = [...document.querySelectorAll("[data-settings-section]")];
+let activeSettingsCategory = window.location.hash === "#billing"
+  ? "billing"
+  : localStorage.getItem("settingsCategory") || "account";
+
+const showSettingsCategory = (category) => {
+  activeSettingsCategory = settingsCategoryButtons.some((button) => button.dataset.settingsCategory === category)
+    ? category
+    : "account";
+  settingsCategoryButtons.forEach((button) => {
+    const selected = button.dataset.settingsCategory === activeSettingsCategory;
+    button.setAttribute("aria-selected", String(selected));
+  });
+  settingsSections.forEach((section) => {
+    section.hidden = section.dataset.settingsSection !== activeSettingsCategory;
+  });
+  localStorage.setItem("settingsCategory", activeSettingsCategory);
+};
+
+settingsCategoryButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    showSettingsCategory(button.dataset.settingsCategory);
+    if (smartFeatureSettings) {
+      smartFeatureSettings.hidden = !smartTrips.checked || activeSettingsCategory !== "activity";
+    }
+  });
+});
+showSettingsCategory(activeSettingsCategory);
 
 const settingsThemeToggle = document.querySelector("#settings-theme-toggle");
 const updateThemeLabel = () => {
@@ -148,8 +227,60 @@ tripNotifications.addEventListener("change", async () => {
 
 const smartTrips = document.querySelector("#smart-trips");
 smartTrips.checked = localStorage.getItem("smartTrips") === "on";
-smartTrips.addEventListener("change", () => {
+const smartFeatureSettings = document.querySelector("#smart-feature-settings");
+const updateSmartFeatureSettingsVisibility = () => {
+  if (smartFeatureSettings) {
+    smartFeatureSettings.hidden = !smartTrips.checked || activeSettingsCategory !== "activity";
+  }
+};
+updateSmartFeatureSettingsVisibility();
+smartTrips.addEventListener("change", async () => {
   localStorage.setItem("smartTrips", smartTrips.checked ? "on" : "off");
+  updateSmartFeatureSettingsVisibility();
+  if (smartTrips.checked && "Notification" in window && Notification.permission === "default") {
+    await Notification.requestPermission();
+  }
+});
+
+const smartSettingFields = [
+  ["#smart-start-speed", "smartTripStartSpeedKph", 10.8, 5, 80],
+  ["#smart-start-distance", "smartTripStartDistanceMeters", 25, 5, 200],
+  ["#smart-stop-minutes", "smartTripStopMinutes", 3, 1, 30],
+];
+smartSettingFields.forEach(([selector, key, fallback, min, max]) => {
+  const input = document.querySelector(selector);
+  const stored = Number(localStorage.getItem(key));
+  input.value = Number.isFinite(stored) && stored >= min && stored <= max ? stored : fallback;
+  input.addEventListener("change", () => {
+    const value = Number(input.value);
+    if (!Number.isFinite(value) || value < min || value > max) {
+      input.value = localStorage.getItem(key) || fallback;
+      showNotice("smart-settings-notice", `Enter a value between ${min} and ${max}.`, true);
+      return;
+    }
+    localStorage.setItem(key, String(value));
+    showNotice("smart-settings-notice", "Smart Trips settings saved.");
+  });
+});
+
+const analyticsSettingFields = [
+  ["#analytics-anomaly-margin", "analyticsAnomalyMarginPct", 20, 5, 100],
+  ["#analytics-efficiency-margin", "analyticsEfficiencyDropPct", 15, 5, 100],
+];
+analyticsSettingFields.forEach(([selector, key, fallback, min, max]) => {
+  const input = document.querySelector(selector);
+  const stored = Number(localStorage.getItem(key));
+  input.value = Number.isFinite(stored) && stored >= min && stored <= max ? stored : fallback;
+  input.addEventListener("change", () => {
+    const value = Number(input.value);
+    if (!Number.isFinite(value) || value < min || value > max) {
+      input.value = localStorage.getItem(key) || fallback;
+      showNotice("analytics-settings-notice", `Enter a value between ${min} and ${max}.`, true);
+      return;
+    }
+    localStorage.setItem(key, String(value));
+    showNotice("analytics-settings-notice", "Analytics settings saved.");
+  });
 });
 
 // ---------- Biometric sign-in management ----------

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">LogMate</string>
+    <string name="title_activity_main">LogMate</string>
+    <string name="package_name">co.za.logmate.app</string>
+    <string name="custom_url_scheme">co.za.logmate.app</string>
+</resources>

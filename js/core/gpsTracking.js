@@ -5,6 +5,10 @@
  */
 
 import { getLocalStore, setLocalStore } from "./localStore.js";
+import {
+  startNativeBackgroundWatcher,
+  stopNativeBackgroundWatcher,
+} from "./nativeBackgroundGeolocation.js";
 
 const log = (...args) => console.log("[GPS Tracking]", ...args);
 const warn = (...args) => console.warn("[GPS Tracking]", ...args);
@@ -12,6 +16,7 @@ const error = (...args) => console.error("[GPS Tracking]", ...args);
 
 // State management
 let watchId = null;
+let nativeWatcherId = null;
 let isTracking = false;
 let tripCoordinates = [];
 let lastRecordedCoord = null;
@@ -155,22 +160,29 @@ export async function startTripTracking() {
     // Take one immediate position fix (local GPS, no API call) so the
     // trip's start location is captured even if the first watchPosition
     // update is delayed.
-    navigator.geolocation.getCurrentPosition(
-      (position) => handlePositionSuccess(position),
+    nativeWatcherId = await startNativeBackgroundWatcher(
+      (location) =>
+        handlePositionSuccess({
+          coords: location,
+          timestamp: location.time || Date.now(),
+        }),
       (err) => handlePositionError(err),
-      GPS_CONFIG
     );
 
-    // Start watching position
-    watchId = navigator.geolocation.watchPosition(
-      (position) => {
-        handlePositionSuccess(position);
-      },
-      (err) => {
-        handlePositionError(err);
-      },
-      GPS_CONFIG
-    );
+    if (nativeWatcherId === null) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => handlePositionSuccess(position),
+        (err) => handlePositionError(err),
+        GPS_CONFIG,
+      );
+
+      // Start watching position in a regular browser/PWA.
+      watchId = navigator.geolocation.watchPosition(
+        (position) => handlePositionSuccess(position),
+        (err) => handlePositionError(err),
+        GPS_CONFIG,
+      );
+    }
 
     return { success: true, message: "GPS tracking started" };
   } catch (err) {
@@ -276,15 +288,17 @@ function handlePositionError(err) {
  * Returns: { success: boolean, tripPayload: object | null, message: string }
  */
 export async function endTripTracking() {
-  if (!isTracking || watchId === null) {
+  if (!isTracking || (watchId === null && nativeWatcherId === null)) {
     warn("No active trip tracking");
     return { success: false, tripPayload: null, message: "No active trip" };
   }
 
   try {
     // Stop watching position
-    navigator.geolocation.clearWatch(watchId);
+    if (watchId !== null) navigator.geolocation.clearWatch(watchId);
     watchId = null;
+    await stopNativeBackgroundWatcher(nativeWatcherId);
+    nativeWatcherId = null;
     isTracking = false;
     const tripEndTime = Date.now();
     if (persistTimer !== null) {
