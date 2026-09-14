@@ -1,4 +1,4 @@
-const CACHE_NAME = "logmate-shell-v17";
+const CACHE_NAME = "logmate-shell-v25";
 const OFFLINE_PAGE = "/html/offline.html";
 
 const APP_SHELL = [
@@ -23,6 +23,7 @@ const APP_SHELL = [
   "/js/core/reportCache.js",
   "/js/core/analytics.js",
   "/js/core/subscription.js",
+  "/js/core/consent.js",
   // Page modules
   "/js/pages/auth.js",
   "/js/pages/dashboard.js",
@@ -33,6 +34,7 @@ const APP_SHELL = [
   "/js/pages/tripReport.js",
   "/js/pages/report.js",
   "/js/pages/settings.js",
+  "/js/pages/checkout.js",
   "/js/pages/help.js",
   "/js/pages/resetPassword.js",
   "/js/pages/vehicleList.js",
@@ -48,6 +50,7 @@ const APP_SHELL = [
   "/html/trip-report.html",
   "/html/report.html",
   "/html/settings.html",
+  "/html/checkout.html",
   "/html/help.html",
   "/html/analytics.html",
   "/html/reset-password.html",

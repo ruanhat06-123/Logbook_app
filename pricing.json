@@ -7,16 +7,33 @@
   "plans": {
     "premium": {
       "label": "Premium",
-      "monthly": 99
-    
+      "monthly": 99,
+      "features": [
+        "Unlimited trip and fill-up records",
+        "SARS-ready PDF exports included",
+        "Smart analytics and service insights",
+        "Offline logging and secure sync"
+      ]
     },
     "fleet_starter": {
       "label": "Fleet Starter",
-      "monthly": 299
+      "monthly": 299,
+      "features": [
+        "Everything in Premium",
+        "Fleet dashboard and vehicle summaries",
+        "Business-use and distance reporting",
+        "SARS-ready PDF exports included"
+      ]
     },
     "fleet_pro": {
       "label": "Fleet Pro",
-      "monthly": 799
+      "monthly": 799,
+      "features": [
+        "Everything in Fleet Starter",
+        "Advanced fleet reporting",
+        "Multi-vehicle oversight for growing teams",
+        "Priority room for operational records"
+      ]
     }
   }
 }

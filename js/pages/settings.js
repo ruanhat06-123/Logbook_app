@@ -1,4 +1,5 @@
 import "../core/app.js";
+import { setupTermsConsent } from "../core/consent.js";
 
 const user = await requireAuth();
 if (!user) throw new Error("Not authenticated");
@@ -91,8 +92,20 @@ await shell("settings", `
       </div>
       <div id="offline-data-notice" class="notice" hidden></div>
     </section>
+    <section class="card terms-settings-card">
+      <div class="card-head"><h2>Terms and Conditions</h2></div>
+      <p class="row-sub">Review the terms governing LogMate, your vehicle records, SARS-supporting reports, privacy and copyright.</p>
+      <div class="consent-warning" data-terms-warning role="alert">
+        <p>⚠️ Action Required: You have not accepted our updated Terms and Conditions. Please review and accept them now to continue using SARS-compliant logging.</p>
+      </div>
+      <div class="terms-review-actions">
+        <button class="btn btn-primary" type="button" data-review-terms>Read Terms and Conditions</button>
+      </div>
+    </section>
   </div>
 `);
+
+setupTermsConsent();
 
 const settingsThemeToggle = document.querySelector("#settings-theme-toggle");
 const updateThemeLabel = () => {
@@ -342,24 +355,64 @@ async function startCheckout({ tier, cycle, button }) {
   setButtonBusy(button, true, "Opening secure checkout…");
   showNotice("billing-notice", "Redirecting to secure checkout...");
   try {
-    const { data: sessionData } = await supabase.auth.getSession();
     const apiBase = window.__ENV?.VITE_API_URL || "https://logmate.co.za";
-    const response = await fetch(`${apiBase}/api/billing/checkout`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${sessionData.session?.access_token || ""}`,
-      },
-      body: JSON.stringify({ tier, billingCycle: cycle }),
-    });
-    const result = await response.json();
+    const requestCheckout = async (accessToken) => {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
+      try {
+        return await fetch(`${apiBase}/api/billing/checkout`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({ tier, billingCycle: cycle }),
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeout);
+      }
+    };
+
+    let { data: sessionData } = await supabase.auth.getSession();
+    if (!sessionData.session?.access_token) {
+      const refreshed = await supabase.auth.refreshSession();
+      sessionData = refreshed.data;
+    }
+    if (!sessionData.session?.access_token) {
+      throw new Error("Your session has expired. Sign in again before choosing a plan.");
+    }
+
+    let response = await requestCheckout(sessionData.session.access_token);
+    if (response.status === 401) {
+      const refreshed = await supabase.auth.refreshSession();
+      if (!refreshed.data.session?.access_token) {
+        window.location.href = "login.html";
+        return;
+      }
+      response = await requestCheckout(refreshed.data.session.access_token);
+      if (response.status === 401) {
+        await supabase.auth.signOut();
+        window.location.href = "login.html?reason=session-expired";
+        return;
+      }
+    }
+    const result = await response.json().catch(() => ({}));
     if (!response.ok || !result.checkoutUrl) {
       throw new Error(result.error || "Checkout could not be started.");
     }
     window.location.href = result.checkoutUrl;
   } catch (err) {
     console.error("Checkout failed:", err);
-    showNotice("billing-notice", `Could not start checkout: ${err.message}`, true);
+    const isLocal = ["localhost", "127.0.0.1"].includes(window.location.hostname);
+    const message = err.name === "AbortError"
+      ? "The billing service took too long to respond. Try again shortly."
+      : err instanceof TypeError && isLocal
+        ? "The local billing API is not running. Start it with `npm install` and `npm start`, then try again."
+        : err instanceof TypeError
+          ? "The production billing API could not be reached. Confirm that the API is deployed at https://logmate.co.za."
+          : err.message;
+    showNotice("billing-notice", `Could not start checkout: ${message}`, true);
   } finally {
     setButtonBusy(button, false);
   }

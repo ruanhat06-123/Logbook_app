@@ -1,5 +1,8 @@
 import { supabase } from "../core/supabaseClient.js";
 import { syncSubscription } from "../core/subscription.js";
+import { setupCookieConsent } from "../core/consent.js";
+
+setupCookieConsent();
 
 const isOffline = () => !navigator.onLine;
 
@@ -258,6 +261,10 @@ const title = document.querySelector("#form-title"),
   firstName = document.querySelector("#first-name"),
   surname = document.querySelector("#surname"),
   forgotPassword = document.querySelector("#forgot-password");
+if (new URLSearchParams(window.location.search).get("reason") === "session-expired") {
+  notice.hidden = false;
+  notice.textContent = "Your session expired. Sign in again to continue to checkout.";
+}
 const validSignupPassword = (value) =>
   value.length >= 8 &&
   /[A-Z]/.test(value) &&

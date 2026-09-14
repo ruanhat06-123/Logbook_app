@@ -2,6 +2,7 @@
 import { supabase } from "./supabaseClient.js";
 import { initializeOfflineDetection } from "./offlineIndicator.js";
 import "./serviceReminder.js";
+import { setupCookieConsent } from "./consent.js";
 import {
   getSubscriptionState,
   syncSubscription,
@@ -196,6 +197,7 @@ async function shell(active, content) {
 
   document.body.innerHTML = `<div class="app-shell"><aside class="sidebar"><div data-nav></div></aside><main class="main">${banner}${content}</main></div>`;
   renderNav(active, user, subscriptionState);
+  setupCookieConsent();
 
   const themeToggle = document.createElement("button");
   themeToggle.className = "theme-toggle";

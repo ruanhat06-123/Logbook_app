@@ -17,12 +17,14 @@ let tripCoordinates = [];
 let lastRecordedCoord = null;
 let wakeLockSentinel = null;
 let tripStartTime = null;
+let persistTimer = null;
+let wakeLockVisibilityHandler = null;
 
 // Configuration
 const GPS_CONFIG = {
   enableHighAccuracy: true,
-  timeout: 10000, // 10 seconds
-  maximumAge: 0, // No cached positions
+  timeout: 20000, // Allow the GPS hardware more time between wake-ups.
+  maximumAge: 5000, // Reuse a recent fix when it is sufficiently fresh.
 };
 
 // Filter out GPS points with poor accuracy (> 15 meters)
@@ -69,7 +71,7 @@ async function requestScreenWakeLock() {
     log("Screen wake lock acquired");
 
     // Re-acquire wake lock if document becomes visible again
-    document.addEventListener("visibilitychange", async () => {
+    wakeLockVisibilityHandler = async () => {
       if (document.hidden) return;
       if (wakeLockSentinel === null) {
         try {
@@ -79,7 +81,8 @@ async function requestScreenWakeLock() {
           error("Failed to re-acquire wake lock:", err);
         }
       }
-    });
+    };
+    document.addEventListener("visibilitychange", wakeLockVisibilityHandler);
 
     return true;
   } catch (err) {
@@ -101,6 +104,22 @@ async function releaseScreenWakeLock() {
       error("Failed to release wake lock:", err);
     }
   }
+  if (wakeLockVisibilityHandler) {
+    document.removeEventListener("visibilitychange", wakeLockVisibilityHandler);
+    wakeLockVisibilityHandler = null;
+  }
+}
+
+function scheduleCoordinatePersistence() {
+  if (persistTimer !== null) return;
+  persistTimer = setTimeout(async () => {
+    persistTimer = null;
+    try {
+      await setLocalStore("tripCoordinates", tripCoordinates);
+    } catch (err) {
+      error("Failed to persist coordinates to local storage:", err);
+    }
+  }, 15000);
 }
 
 /**
@@ -224,10 +243,8 @@ function handlePositionSuccess(position) {
     accuracy: accuracy.toFixed(1),
   });
 
-  // Persist to local storage after every GPS tick (offline-first)
-  setLocalStore("tripCoordinates", tripCoordinates).catch((err) => {
-    error("Failed to persist coordinates to local storage:", err);
-  });
+  // Batch writes so long trips do not wake IndexedDB for every GPS fix.
+  scheduleCoordinatePersistence();
 
   // Dispatch custom event for UI updates
   window.dispatchEvent(
@@ -270,6 +287,10 @@ export async function endTripTracking() {
     watchId = null;
     isTracking = false;
     const tripEndTime = Date.now();
+    if (persistTimer !== null) {
+      clearTimeout(persistTimer);
+      persistTimer = null;
+    }
 
     // Release screen wake lock
     await releaseScreenWakeLock();
@@ -344,6 +365,10 @@ export async function cancelTripTracking() {
   }
 
   isTracking = false;
+  if (persistTimer !== null) {
+    clearTimeout(persistTimer);
+    persistTimer = null;
+  }
   tripCoordinates = [];
   lastRecordedCoord = null;
   tripStartTime = null;

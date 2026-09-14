@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>LogMate legal consent</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #17252a;
+        --muted: #617076;
+        --paper: #f4f7f4;
+        --surface: #ffffff;
+        --line: #d7e1dc;
+        --teal: #087f78;
+        --teal-deep: #07534f;
+        --mint: #dff3ed;
+        --warning: #fff1d4;
+        --warning-ink: #704b00;
+        --shadow: 0 20px 60px rgb(20 52 47 / 12%);
+      }
+
+      [data-theme="dark"] {
+        color-scheme: dark;
+        --ink: #ecf5f1;
+        --muted: #a9bbb5;
+        --paper: #111b1b;
+        --surface: #1a2928;
+        --line: #334844;
+        --teal: #64d5c2;
+        --teal-deep: #a8efe1;
+        --mint: #203c38;
+        --warning: #4d3a16;
+        --warning-ink: #ffe7a8;
+        --shadow: 0 20px 60px rgb(0 0 0 / 35%);
+      }
+
+      * { box-sizing: border-box; }
+      body {
+        min-height: 100vh;
+        margin: 0;
+        color: var(--ink);
+        background: radial-gradient(circle at 10% 0%, var(--mint), transparent 35%), var(--paper);
+        font: 16px/1.55 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      button, input { font: inherit; }
+      button { cursor: pointer; }
+      button:disabled { cursor: not-allowed; opacity: .5; }
+      .page { width: min(960px, calc(100% - 32px)); margin: 0 auto; padding: 64px 0 180px; }
+      .eyebrow { color: var(--teal); font-size: .75rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+      h1, h2 { line-height: 1.15; }
+      h1 { max-width: 620px; margin: 12px 0 16px; font-size: clamp(2.3rem, 6vw, 4.6rem); letter-spacing: -.06em; }
+      h2 { margin: 0; font-size: 1.35rem; }
+      .intro { max-width: 680px; margin-bottom: 36px; }
+      .intro p { max-width: 600px; color: var(--muted); font-size: 1.1rem; }
+      .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+      .card { padding: 28px; border: 1px solid var(--line); border-radius: 8px; background: color-mix(in srgb, var(--surface) 94%, transparent); box-shadow: var(--shadow); }
+      .card p { color: var(--muted); }
+      .field { display: grid; gap: 8px; margin: 22px 0; }
+      label { font-weight: 700; }
+      input[type="email"] { width: 100%; min-height: 48px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 4px; color: var(--ink); background: var(--paper); }
+      .check { display: flex; align-items: flex-start; gap: 10px; color: var(--muted); font-size: .94rem; }
+      .check input { width: 18px; height: 18px; margin: 3px 0 0; accent-color: var(--teal); }
+      a { color: var(--teal); font-weight: 700; }
+      .button-row { display: flex; flex-wrap: wrap; gap: 10px; }
+      .button { min-height: 46px; padding: 10px 16px; border: 1px solid transparent; border-radius: 4px; font-weight: 800; }
+      .primary { color: #fff; background: var(--teal); }
+      .secondary { color: var(--teal-deep); border-color: var(--line); background: transparent; }
+      .danger { color: var(--ink); border-color: var(--line); background: var(--surface); }
+      .settings { grid-column: 1 / -1; }
+      .warning { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 18px; border: 1px solid color-mix(in srgb, var(--warning-ink) 35%, transparent); border-radius: 4px; color: var(--warning-ink); background: var(--warning); }
+      .warning p { margin: 0; color: inherit; font-weight: 700; }
+      .banner { position: fixed; right: 0; bottom: 0; left: 0; z-index: 5; padding: 18px max(20px, calc((100% - 960px) / 2)); border-top: 1px solid var(--line); background: var(--surface); box-shadow: 0 -8px 30px rgb(20 52 47 / 10%); }
+      .banner-content { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+      .banner p { max-width: 560px; margin: 0; color: var(--muted); }
+      .banner strong { display: block; margin-bottom: 4px; color: var(--ink); }
+      .modal-backdrop { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; padding: 20px; background: rgb(7 25 24 / 65%); }
+      .modal { width: min(680px, 100%); max-height: min(720px, 90vh); padding: 28px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--surface); box-shadow: var(--shadow); }
+      .legal-text { max-height: 360px; margin: 20px 0; padding: 16px; overflow: auto; border: 1px solid var(--line); color: var(--muted); background: var(--paper); }
+      [hidden] { display: none !important; }
+      @media (max-width: 700px) {
+        .page { padding-top: 36px; }
+        .grid { grid-template-columns: 1fr; }
+        .settings { grid-column: auto; }
+        .warning, .banner-content { align-items: stretch; flex-direction: column; }
+        .banner .button-row .button { flex: 1 1 100%; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <section class="intro" aria-labelledby="page-title">
+        <div class="eyebrow">LogMate / Legal centre</div>
+        <h1 id="page-title">A clear agreement for every kilometre.</h1>
+        <p>Review the terms that govern SARS-compliant logging and choose how LogMate may use optional cookies on this device.</p>
+      </section>
+
+      <div class="grid">
+        <section class="card" aria-labelledby="signup-title">
+          <h2 id="signup-title">Create your LogMate account</h2>
+          <p>Start your logbook with the agreement that keeps your account and records protected.</p>
+          <form id="signup-form">
+            <div class="field">
+              <label for="email">Email address</label>
+              <input id="email" name="email" type="email" autocomplete="email" required />
+            </div>
+            <label class="check" for="terms-checkbox">
+              <input id="terms-checkbox" type="checkbox" required />
+              <span>I agree to the <a href="#terms" id="terms-link">Terms and Conditions</a></span>
+            </label>
+            <div class="button-row" style="margin-top: 22px">
+              <button class="button primary" id="signup-button" type="submit" disabled>Create account</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="card settings" aria-labelledby="settings-title">
+          <h2 id="settings-title">Settings</h2>
+          <p>Keep your legal consent status up to date before continuing to use your logbook.</p>
+          <div class="warning" id="terms-warning" role="alert">
+            <p>⚠️ Action Required: You have not accepted our updated Terms and Conditions. Please review and accept them now to continue using SARS-compliant logging.</p>
+            <button class="button primary" id="review-button" type="button">Review &amp; Accept</button>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <aside class="banner" id="cookie-banner" aria-label="Cookie preferences" hidden>
+      <div class="banner-content">
+        <p><strong>Choose your cookie preferences</strong>Essential cookies keep LogMate secure. Analytics and marketing cookies help us improve the service and communicate relevant updates.</p>
+        <div class="button-row">
+          <button class="button primary" data-consent="essential_analytics_marketing" type="button">Accept All</button>
+          <button class="button secondary" data-consent="essential_analytics" type="button">Limited</button>
+          <button class="button danger" data-consent="essential" type="button">Decline</button>
+        </div>
+      </div>
+    </aside>
+
+    <div class="modal-backdrop" id="terms-modal" role="presentation" hidden>
+      <section class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <div class="eyebrow">LogMate / Terms</div>
+        <h2 id="modal-title">Terms and Conditions</h2>
+        <div class="legal-text" tabindex="0">
+          <p><strong>1. About these terms.</strong> These Terms and Conditions govern your access to LogMate, including its web application, mobile-friendly features, reports, integrations and related support services. By creating an account, using the service or selecting “I Accept the Terms”, you confirm that you have read and agree to these terms.</p>
+          <p><strong>2. Eligibility and account security.</strong> You must provide accurate registration information and be legally able to enter into this agreement. Keep your password, authentication methods and recovery details confidential. You are responsible for activity performed through your account and must notify us promptly if you suspect unauthorised access.</p>
+          <p><strong>3. Vehicle and trip records.</strong> LogMate allows you to record journeys, mileage, fuel, expenses, vehicles, drivers and service events. You are responsible for entering information accurately, reviewing imported or calculated values, retaining supporting documents and correcting errors before relying on a report.</p>
+          <p><strong>4. SARS and regulatory use.</strong> LogMate is a record-keeping tool and is not tax, accounting or legal advice. Reports and exports are intended to assist your own administration, but do not guarantee compliance with SARS requirements or acceptance by SARS, an employer, an auditor, a court or another authority. You remain responsible for understanding the rules that apply to your circumstances and for keeping evidence required by law.</p>
+          <p><strong>5. Your information and permissions.</strong> You retain ownership of information you submit. You grant LogMate permission to host, process, back up, synchronise and display that information as reasonably necessary to provide, secure and improve the service. You confirm that you have the rights and permissions needed to submit information about vehicles, journeys, people and other third parties.</p>
+          <p><strong>6. Privacy and cookies.</strong> We process personal information in accordance with the applicable LogMate privacy notice and South African data-protection requirements. Essential cookies support security and core functionality. Where available, analytics and marketing cookies are used only according to the preference you select in the cookie banner. You can change browser settings or clear cookies, although some features may then stop working.</p>
+          <p><strong>7. Acceptable use.</strong> You may not use LogMate to break the law, infringe another person’s rights, upload malicious code, probe or bypass security, reverse engineer the service, interfere with another user, create abusive automated traffic or submit content that you are not authorised to process.</p>
+          <p><strong>8. Availability and third-party services.</strong> We aim to keep LogMate available, but access may be interrupted for maintenance, security work, connectivity problems, events outside our control or changes to third-party services such as mapping, authentication and payment providers. Third-party services may have their own terms and privacy policies.</p>
+          <p><strong>9. Plans, payments and limits.</strong> Paid features, plan limits, renewal terms and applicable prices are shown at the relevant point of purchase. You authorise the selected payment provider to process valid charges. We may restrict features when a payment fails, a plan expires or usage exceeds an advertised limit, subject to any rights you have under applicable law.</p>
+          <p><strong>10. Intellectual property.</strong> LogMate, its design, software, names, logos and documentation belong to LogMate or its licensors. We grant you a limited, non-exclusive, non-transferable right to use the service for your own lawful record keeping while your account remains active. No other licence is transferred.</p>
+          <p><strong>11. Copyright.</strong> All copyright in the LogMate application, source code, user interface, visual design, text, graphics, icons, reports, templates, documentation and other original materials made available through the service is owned by LogMate or its licensors and is protected by applicable copyright law. You may view, download or print materials only for your own lawful use of LogMate. You may not copy, reproduce, adapt, publish, distribute, sell, remove copyright notices or create derivative works from those materials without prior written permission, except where applicable law expressly permits it.</p>
+          <p><strong>12. Suspension and ending an account.</strong> You may stop using LogMate or request account closure. We may suspend or terminate access where reasonably necessary to protect the service, investigate misuse, comply with law or address unpaid charges. Where practicable, we will provide notice and an opportunity to resolve the issue. You should export or retain records you need before closing an account.</p>
+          <p><strong>13. Disclaimers and liability.</strong> LogMate is provided on an “as available” basis, and you should maintain your own backups and supporting records. To the extent permitted by law, LogMate is not responsible for indirect loss, lost profits, missed deductions, penalties, data-entry errors or a decision made solely from a report. Nothing in these terms excludes liability that cannot lawfully be excluded.</p>
+          <p><strong>14. Changes to these terms.</strong> We may update these terms when the service, law or regulatory expectations change. We will identify material updates and may require you to review and accept them before continued use. The updated version takes effect on the date stated in the notice.</p>
+          <p><strong>15. Governing law and contact.</strong> These terms are governed by the laws of the Republic of South Africa. The parties will try to resolve concerns in good faith before starting formal proceedings. Questions about these terms or your account can be sent through the LogMate support channel.</p>
+        </div>
+        <div class="button-row">
+          <button class="button primary" id="accept-terms" type="button">I Accept the Terms</button>
+          <button class="button secondary" id="close-modal" type="button">Close</button>
+        </div>
+      </section>
+    </div>
+
+    <script>
+      (() => {
+        const YEAR = 60 * 60 * 24 * 365;
+        const cookieOptions = `; Max-Age=${YEAR}; Path=/; SameSite=Lax; Secure`;
+
+        const readCookie = (name) => {
+          const prefix = `${encodeURIComponent(name)}=`;
+          const entry = document.cookie.split(";").map((part) => part.trim()).find((part) => part.startsWith(prefix));
+          return entry ? decodeURIComponent(entry.slice(prefix.length)) : null;
+        };
+        const setCookie = (name, value) => {
+          document.cookie = `${encodeURIComponent(name)}=${encodeURIComponent(value)}${cookieOptions}`;
+        };
+
+        const banner = document.querySelector("#cookie-banner");
+        const termsCheckbox = document.querySelector("#terms-checkbox");
+        const signupButton = document.querySelector("#signup-button");
+        const termsWarning = document.querySelector("#terms-warning");
+        const modal = document.querySelector("#terms-modal");
+        const acceptTerms = document.querySelector("#accept-terms");
+        const closeModal = document.querySelector("#close-modal");
+        const termsLink = document.querySelector("#terms-link");
+
+        const syncTermsUi = () => {
+          const accepted = readCookie("logmate_tc_accepted") === "true";
+          termsWarning.hidden = accepted;
+          if (accepted) {
+            termsCheckbox.checked = true;
+            signupButton.disabled = false;
+          }
+        };
+        const openModal = () => {
+          modal.hidden = false;
+          acceptTerms.focus();
+        };
+        const hideModal = () => {
+          modal.hidden = true;
+        };
+
+        if (!readCookie("logmate_cookie_consent")) banner.hidden = false;
+        document.querySelectorAll("[data-consent]").forEach((button) => {
+          button.addEventListener("click", () => {
+            setCookie("logmate_cookie_consent", button.dataset.consent);
+            banner.hidden = true;
+          });
+        });
+
+        termsCheckbox.addEventListener("change", () => {
+          signupButton.disabled = !termsCheckbox.checked;
+        });
+        termsLink.addEventListener("click", (event) => {
+          event.preventDefault();
+          openModal();
+        });
+        document.querySelector("#review-button").addEventListener("click", openModal);
+        closeModal.addEventListener("click", hideModal);
+        modal.addEventListener("click", (event) => {
+          if (event.target === modal) hideModal();
+        });
+        document.addEventListener("keydown", (event) => {
+          if (event.key === "Escape" && !modal.hidden) hideModal();
+        });
+        acceptTerms.addEventListener("click", () => {
+          setCookie("logmate_tc_accepted", "true");
+          termsCheckbox.checked = true;
+          signupButton.disabled = false;
+          termsWarning.hidden = true;
+          hideModal();
+        });
+        document.querySelector("#signup-form").addEventListener("submit", (event) => {
+          event.preventDefault();
+          if (!termsCheckbox.checked) return;
+          setCookie("logmate_tc_accepted", "true");
+          termsWarning.hidden = true;
+          signupButton.textContent = "Consent recorded";
+          signupButton.disabled = true;
+        });
+
+        syncTermsUi();
+      })();
+    </script>
+  </body>
+</html>

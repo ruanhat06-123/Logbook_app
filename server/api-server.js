@@ -12,7 +12,9 @@ const pricingCatalog = require("../pricing.json");
 const app = express();
 app.disable("x-powered-by");
 const PRODUCTION_BASE_URL = "https://logmate.co.za";
+const isLocalRequest = (req) => /^(localhost|127\.0\.0\.1)$/.test(new URL(req.headers.origin || "http://localhost").hostname);
 const getAppBaseUrl = (req) => {
+  if (isLocalRequest(req)) return "http://localhost:5500";
   if (process.env.APP_BASE_URL) return process.env.APP_BASE_URL.replace(/\/$/, "");
   return PRODUCTION_BASE_URL;
 };
@@ -34,7 +36,7 @@ app.use((req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
   res.setHeader("Permissions-Policy", "geolocation=(self), camera=(), microphone=()" );
-  res.setHeader("Content-Security-Policy", "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' https://*.supabase.co https://*.openrouteservice.org https://*.payfast.co.za; font-src 'self' data:; upgrade-insecure-requests; trusted-types default;");
+  res.setHeader("Content-Security-Policy", "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; script-src 'self' https://esm.sh; connect-src 'self' https://*.supabase.co https://*.openrouteservice.org https://*.payfast.co.za; font-src 'self' data:; upgrade-insecure-requests; trusted-types default;");
   if (req.method === "OPTIONS") return res.sendStatus(204);
   next();
 });
@@ -51,6 +53,9 @@ const supabaseAdmin =
 
 const PLAN_PRICING = pricingCatalog.plans;
 const SARS_EXPORT_PRICE = Number(pricingCatalog.sarsExport?.price || 0);
+const PAYFAST_VALIDATE_URL = process.env.PAYFAST_SANDBOX === "false"
+  ? "https://www.payfast.co.za/eng/query/validate"
+  : "https://sandbox.payfast.co.za/eng/query/validate";
 
 async function getUserFromRequest(req) {
   if (!supabaseAdmin) throw new Error("Supabase admin client not configured");
@@ -197,8 +202,8 @@ app.post("/api/billing/checkout", async (req, res) => {
     const fields = {
       merchant_id: process.env.PAYFAST_MERCHANT_ID,
       merchant_key: process.env.PAYFAST_MERCHANT_KEY,
-      return_url: process.env.PAYFAST_RETURN_URL || `${baseUrl}/${isExport ? "html/trip-report.html?billing=export-success" : "html/settings.html?billing=success"}`,
-      cancel_url: process.env.PAYFAST_CANCEL_URL || `${baseUrl}/${isExport ? "html/trip-report.html?billing=export-cancelled" : "html/settings.html?billing=cancelled"}`,
+      return_url: process.env.PAYFAST_RETURN_URL || `${baseUrl}/html/checkout.html?status=success&product=${encodeURIComponent(product)}${isExport ? "" : `&plan=${encodeURIComponent(tier)}`}`,
+      cancel_url: process.env.PAYFAST_CANCEL_URL || `${baseUrl}/html/checkout.html?status=cancelled&product=${encodeURIComponent(product)}${isExport ? "" : `&plan=${encodeURIComponent(tier)}`}`,
       notify_url: process.env.PAYFAST_NOTIFY_URL || `${baseUrl}/api/webhooks/payfast`,
       email_address: user.email,
       amount: amount.toFixed(2),
@@ -223,7 +228,9 @@ app.post("/api/billing/checkout", async (req, res) => {
       .update(`${signatureString}&passphrase=${encodeURIComponent(process.env.PAYFAST_PASSPHRASE || "")}`)
       .digest("hex");
     const query = new URLSearchParams({ ...fields, signature }).toString();
-    const host = process.env.PAYFAST_SANDBOX === "false" ? "www.payfast.co.za" : "sandbox.payfast.co.za";
+    const host = process.env.PAYFAST_SANDBOX === "false" && !isLocalRequest(req)
+      ? "www.payfast.co.za"
+      : "sandbox.payfast.co.za";
     const payload = {
       checkoutUrl: `https://${host}/eng/process?${query}`,
       product,
@@ -264,6 +271,9 @@ app.post("/api/billing/consume-export", async (req, res) => {
 app.post("/api/webhooks/payfast", express.urlencoded({ extended: false }), async (req, res) => {
   try {
     const body = req.body || {};
+    if (!body.signature || !process.env.PAYFAST_PASSPHRASE) {
+      return res.status(400).send("Invalid notification");
+    }
     const { signature, ...fields } = body;
     const signatureString = Object.entries(fields)
       .map(([key, value]) => `${key}=${encodeURIComponent(value).replace(/%20/g, "+")}`)
@@ -276,12 +286,29 @@ app.post("/api/webhooks/payfast", express.urlencoded({ extended: false }), async
       return res.status(400).send("Invalid signature");
     }
 
+    // Confirm the complete notification with PayFast before changing billing state.
+    const validationBody = Object.entries(body)
+      .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value).replace(/%20/g, "+")}`)
+      .join("&");
+    const validationResponse = await fetch(PAYFAST_VALIDATE_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: validationBody,
+    });
+    const validationText = (await validationResponse.text()).trim();
+    if (!validationResponse.ok || validationText !== "VALID") {
+      return res.status(400).send("Notification validation failed");
+    }
+
     const userId = String(body.m_payment_id || "").split(":")[0];
     const tier = body.custom_str1 || "premium";
     const billingCycle = body.custom_str2 || "monthly";
     const amount = Number(body.amount_gross || 0);
+    const expectedAmount = tier === "sars_export"
+      ? SARS_EXPORT_PRICE
+      : Number(PLAN_PRICING[tier]?.[billingCycle] || 0);
 
-    if (!userId || (tier === "sars_export" ? billingCycle !== "one_off" || amount !== SARS_EXPORT_PRICE : !PLAN_PRICING[tier]?.[billingCycle] || billingCycle !== "monthly")) {
+    if (!userId || !Number.isFinite(amount) || amount !== expectedAmount || (tier === "sars_export" ? billingCycle !== "one_off" : !PLAN_PRICING[tier]?.[billingCycle] || billingCycle !== "monthly")) {
       return res.status(400).send("Invalid payment metadata");
     }
 
@@ -306,6 +333,10 @@ app.post("/api/webhooks/payfast", express.urlencoded({ extended: false }), async
   }
 });
 
-app.listen(PORT, () =>
-  console.log(`API proxy listening on http://localhost:${PORT}`),
-);
+if (require.main === module) {
+  app.listen(PORT, () =>
+    console.log(`API proxy listening on http://localhost:${PORT}`),
+  );
+}
+
+module.exports = app;

@@ -61,6 +61,9 @@ let activeTripSession = null;
 let trackingStatusInterval = null;
 let pendingTripData = null;
 let swRegistration = null;
+let lastNotificationUpdateAt = 0;
+const STATUS_UPDATE_INTERVAL_MS = 5000;
+const NOTIFICATION_UPDATE_INTERVAL_MS = 15000;
 
 /**
  * Initialize trip UI handlers
@@ -125,6 +128,7 @@ async function handleStartTrip(event) {
     }
 
     log("Trip started successfully");
+    lastNotificationUpdateAt = 0;
 
     // Update UI
     const startBtn = document.getElementById("start-live-trip");
@@ -190,7 +194,7 @@ function startTrackingStatusPolling() {
 
     // Update the persistent notification with the current distance
     await showTrackingNotification(currentDistance);
-  }, 1000);
+  }, STATUS_UPDATE_INTERVAL_MS);
 }
 
 /**
@@ -220,6 +224,9 @@ async function showTrackingNotification(distanceMeters) {
     }
   }
   if (Notification.permission !== "granted") return;
+  const now = Date.now();
+  if (now - lastNotificationUpdateAt < NOTIFICATION_UPDATE_INTERVAL_MS) return;
+  lastNotificationUpdateAt = now;
 
   const options = {
     body: `LogMate is tracking this trip. Current distance: ${formatDistance(distanceMeters)}`,

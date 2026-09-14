@@ -1,3 +1,7 @@
+import { setupCookieConsent } from "./core/consent.js";
+
+setupCookieConsent();
+
 const readCookie = (name) => document.cookie.split("; ").find((item) => item.startsWith(`${name}=`));
 const hasCachedAccount = () => {
   if (readCookie("logmate_email")) return true;
@@ -21,6 +25,7 @@ const pricingCards = Object.entries(pricingCatalog.plans)
       <div class="eyebrow">${plan.label}</div>
       <div class="landing-price"><strong>${formatPrice(plan.monthly, "month")}</strong></div>
       <p>Flexible monthly billing.</p>
+      <ul class="landing-plan-features">${(plan.features || []).map((feature) => `<li>${feature}</li>`).join("")}</ul>
       <a class="btn ${tier === "premium" ? "btn-primary" : "btn-secondary"}" href="html/login.html?mode=signup">Get started →</a>
     </article>`)
   .join("");
