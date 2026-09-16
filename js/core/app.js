@@ -234,6 +234,14 @@ async function shell(active, content) {
     window.location.reload();
   });
 
+  // Keep Smart Trips running when the authenticated app starts on any page.
+  // The native watcher owns background delivery on Capacitor platforms.
+  if (localStorage.getItem("smartTrips") === "on") {
+    import("./tripUIIntegration.js")
+      .then(({ startSmartTripMonitor }) => startSmartTripMonitor())
+      .catch((err) => console.warn("Smart Trips startup failed:", err));
+  }
+
   return user;
 }
 

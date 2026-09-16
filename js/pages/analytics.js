@@ -96,43 +96,58 @@ await shell(
   "analytics",
   `
   <style>
-    .analytics-hero { display: flex; justify-content: space-between; gap: 24px; margin-bottom: 22px; }
-    .analytics-hero p { color: var(--muted); max-width: 640px; margin: 0; line-height: 1.65; }
-    .analytics-hero-note { color: var(--muted); font-size: 12px; white-space: nowrap; }
-    .analytics-grid { display: grid; gap: 18px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .analytics-card { min-width: 0; border-top: 3px solid var(--line); }
-    .analytics-card:nth-child(1) { border-top-color: var(--teal); }
+    .analytics-hero { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 32px; margin: 0 0 34px; padding-bottom: 28px; border-bottom: 1px solid var(--line); }
+    .analytics-hero p { color: var(--muted); max-width: 680px; margin: 0; line-height: 1.75; font-size: 14px; }
+    .analytics-hero-note { color: var(--ink); white-space: nowrap; font: 11px "DM Mono", monospace; text-transform: uppercase; letter-spacing: 0.08em; }
+    .analytics-grid { display: grid; gap: 20px; grid-template-columns: minmax(0, 1.12fr) minmax(300px, 0.88fr); align-items: start; }
+    .analytics-card { min-width: 0; border: 1px solid var(--line); border-top: 2px solid var(--teal); border-radius: 0; box-shadow: 0 4px 30px rgba(0, 0, 0, 0.02); }
     .analytics-card:nth-child(2) { border-top-color: var(--mint); }
     .analytics-card:nth-child(3) { border-top-color: var(--yellow); }
     .analytics-card:nth-child(4) { border-top-color: var(--coral); }
-    .analytics-card h3 { margin: 0 0 4px; font-size: 17px; }
-    .analytics-card .card-sub { color: var(--muted); font-size: 12px; margin-bottom: 16px; line-height: 1.5; }
-    .alert-banner { padding: 13px 16px; border: 1px solid var(--line); border-left: 4px solid; border-radius: 5px; margin-bottom: 12px; font-size: 13px; display: flex; gap: 10px; align-items: flex-start; background: var(--surface); }
-    .alert-banner .alert-icon { font-size: 15px; line-height: 1.2; }
+    .analytics-card:nth-child(5) { grid-column: 1 / -1; border-top-color: var(--ink); }
+    .analytics-card h3 { margin: 0 0 6px; font-family: Georgia, "Times New Roman", serif; font-size: 22px; letter-spacing: -0.02em; }
+    .analytics-card .card-sub { color: var(--muted); font-size: 12px; margin-bottom: 20px; line-height: 1.6; }
+    .alert-banner { padding: 14px 16px; border: 1px solid var(--line); border-left: 3px solid; border-radius: 0; margin-bottom: 12px; font-size: 13px; display: flex; gap: 12px; align-items: flex-start; background: var(--surface); }
+    .alert-banner .alert-icon { min-width: 52px; color: var(--muted); font: 10px "DM Mono", monospace; line-height: 1.4; letter-spacing: 0.08em; text-transform: uppercase; }
     .alert-high { border-left-color: var(--coral); color: var(--coral); }
     .alert-medium { border-left-color: var(--yellow); color: var(--ink); }
     .alert-low { border-left-color: var(--teal); color: var(--ink); }
     .alert-ok { border-left-color: var(--mint); color: var(--ink); }
-    .stat-list { display: grid; gap: 10px; }
-    .stat-row { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; align-items: baseline; }
+    .stat-list { display: grid; gap: 0; }
+    .stat-row { display: flex; justify-content: space-between; gap: 18px; padding: 13px 0; border-top: 1px solid var(--line); font-size: 13px; align-items: baseline; }
     .stat-row span { color: var(--muted); }
     .stat-row strong { white-space: nowrap; text-align: right; color: var(--ink); }
-    .chart-wrap { width: 100%; }
+    .chart-wrap { width: 100%; padding: 10px 8px 0; background: color-mix(in srgb, var(--paper) 55%, var(--surface)); }
+    .chart-wrap-efficiency { border-radius: 14px; overflow: hidden; }
     .chart-wrap svg { width: 100%; height: auto; display: block; }
-    .chart-empty { min-height: 150px; display: grid; place-items: center; padding: 26px 18px; text-align: center; color: var(--muted); font-size: 13px; border: 1px dashed var(--line); border-radius: 4px; }
-    .gauge-wrap { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
-    .insight-plain { font-size: 14px; line-height: 1.55; margin: 0 0 10px; color: var(--ink); }
+    .chart-wrap path, .chart-wrap circle, .chart-wrap rect { transition: opacity 260ms ease, transform 700ms cubic-bezier(.22, 1, .36, 1); }
+    .chart-wrap .analytics-line { stroke-dasharray: 700; stroke-dashoffset: 700; animation: analytics-line-in 900ms ease-out forwards; }
+    .chart-wrap .analytics-area { opacity: 0; animation: analytics-area-in 700ms ease-out 180ms forwards; }
+    .chart-wrap .pie-slice { transform-box: fill-box; transform-origin: center; animation: analytics-pie-in 700ms cubic-bezier(.22, 1, .36, 1) both; }
+    .chart-wrap .pie-slice:nth-of-type(2) { animation-delay: 120ms; }
+    .chart-wrap .pie-slice:nth-of-type(3) { animation-delay: 220ms; }
+    @keyframes analytics-line-in { to { stroke-dashoffset: 0; } }
+    @keyframes analytics-area-in { to { opacity: 1; } }
+    @keyframes analytics-pie-in { from { opacity: 0; transform: scale(.72); } to { opacity: 1; transform: scale(1); } }
+    @media (prefers-reduced-motion: reduce) {
+      .chart-wrap .analytics-line { animation: none; stroke-dashoffset: 0; }
+      .chart-wrap .analytics-area, .chart-wrap .pie-slice { animation: none; opacity: 1; transform: none; }
+    }
+    .chart-empty { min-height: 150px; display: grid; place-items: center; padding: 26px 18px; text-align: center; color: var(--muted); font-size: 13px; border: 1px dashed var(--line); border-radius: 0; }
+    .gauge-wrap { display: flex; align-items: center; gap: 26px; flex-wrap: wrap; }
+    .insight-plain { font-size: 13px; line-height: 1.7; margin: 20px 0 0; padding-top: 16px; border-top: 1px solid var(--line); color: var(--muted); }
     .anomaly-list { display: grid; gap: 8px; }
-    .anomaly-item { display: flex; gap: 10px; align-items: flex-start; padding: 12px; border: 1px solid var(--line); border-radius: 4px; font-size: 13px; background: var(--surface); }
-    .anomaly-item .a-icon { font-size: 15px; }
+    .anomaly-item { display: flex; gap: 14px; align-items: flex-start; padding: 15px 0; border-top: 1px solid var(--line); font-size: 13px; background: transparent; }
+    .anomaly-item .a-icon { min-width: 44px; color: var(--muted); font: 10px "DM Mono", monospace; letter-spacing: 0.08em; text-transform: uppercase; }
     .anomaly-item .a-date { color: var(--muted); font-size: 12px; margin-top: 2px; }
-    .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; margin-left: 6px; }
+    .pill { display: inline-block; padding: 2px 7px; border-radius: 0; font: 10px "DM Mono", monospace; margin-left: 6px; }
     .pill-worse { border: 1px solid #d9a39c; color: var(--coral); }
     .pill-better { border: 1px solid #9cc7ad; color: #21643d; }
     @media (max-width: 760px) {
       .analytics-hero { display: block; }
       .analytics-hero-note { display: block; margin-top: 10px; }
       .analytics-grid { grid-template-columns: 1fr; }
+      .analytics-card:nth-child(5) { grid-column: auto; }
     }
   </style>
 
@@ -152,7 +167,7 @@ await shell(
     <section class="card analytics-card" aria-labelledby="efficiency-title">
       <h3 id="efficiency-title">Fuel efficiency</h3>
       <div class="card-sub">How many kilometres you get per litre, per fill-up</div>
-      <div class="chart-wrap" id="efficiency-chart"></div>
+      <div class="chart-wrap chart-wrap-efficiency" id="efficiency-chart"></div>
       <p class="insight-plain" id="efficiency-insight"></p>
     </section>
 
@@ -194,7 +209,7 @@ const alertsEl = document.querySelector("#analytics-alerts");
 if (!analytics || !hasData) {
   alertsEl.innerHTML = `
     <div class="alert-banner alert-low">
-      <span class="alert-icon">ℹ️</span>
+      <span class="alert-icon">INFO</span>
       <div><strong>Nothing to analyze yet.</strong> Add a vehicle, log a few trips and fill-ups, and this page will come alive with trends, predictions, and alerts.</div>
     </div>`;
   document.querySelector("#efficiency-chart").innerHTML = '<div class="chart-empty">Log a couple of fill-ups to see your fuel efficiency trend.</div>';
@@ -206,7 +221,7 @@ if (!analytics || !hasData) {
 }
 
 // ---------- Proactive alert banners (plain language + icons) ----------
-const alertIcon = { high: "🔴", medium: "🟠", low: "🔵" };
+const alertIcon = { high: "ACTION", medium: "CHECK", low: "NOTE" };
 const alertTitle = { high: "Action needed", medium: "Heads up", low: "Notice" };
 
 if (analytics.alerts?.length) {
@@ -222,7 +237,7 @@ if (analytics.alerts?.length) {
 } else {
   alertsEl.innerHTML = `
     <div class="alert-banner alert-ok">
-      <span class="alert-icon">✅</span>
+      <span class="alert-icon">CLEAR</span>
       <div><strong>All clear.</strong> Your driving, fuel use, and service schedule all look healthy.</div>
     </div>`;
 }
@@ -267,8 +282,8 @@ function renderEfficiencyChart(points) {
 
   container.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Fuel efficiency trend">
     ${gridLines}
-    <path d="${areaPath}" fill="${palette.primary}" fill-opacity="0.08"/>
-    <path d="${linePath}" fill="none" stroke="${palette.primary}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+    <path class="analytics-area" d="${areaPath}" fill="${palette.primary}" fill-opacity="0.08"/>
+    <path class="analytics-line" d="${linePath}" fill="none" stroke="${palette.primary}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
     ${dots}${xLabels}
   </svg>`;
 
@@ -290,7 +305,7 @@ function renderEfficiencyChart(points) {
   }
 }
 
-// ---------- SVG: trip category bar chart ----------
+// ---------- SVG: trip category pie chart ----------
 function renderCategoryChart(categories) {
   const container = document.querySelector("#category-chart");
   const insight = document.querySelector("#category-insight");
@@ -303,28 +318,31 @@ function renderCategoryChart(categories) {
     return;
   }
 
-  const W = 560, H = 200, PAD = { top: 26, right: 16, bottom: 36, left: 16 };
-  const maxVal = Math.max(business, personal, 1);
-  const barWidth = 100;
-  const gap = 130;
-  const x0 = W / 2 - gap / 2 - barWidth;
-  const x1 = W / 2 + gap / 2;
-  const barH = (v) => ((H - PAD.top - PAD.bottom) * v) / maxVal;
-
-  const bar = (x, value, color, label, count) => {
-    const h = barH(value);
-    const y = H - PAD.bottom - h;
-    return `
-      <rect x="${x}" y="${y.toFixed(1)}" width="${barWidth}" height="${h.toFixed(1)}" rx="8" fill="${color}"><title>${label}: ${value.toLocaleString()} km across ${count} trips</title></rect>
-      <text x="${x + barWidth / 2}" y="${(y - 8).toFixed(1)}" font-size="13" font-weight="700" text-anchor="middle" fill="currentColor">${value.toLocaleString()} km</text>
-      <text x="${x + barWidth / 2}" y="${H - 18}" font-size="12" text-anchor="middle" fill="currentColor">${label}</text>
-      <text x="${x + barWidth / 2}" y="${H - 5}" font-size="10" text-anchor="middle" fill="currentColor" opacity="0.6">${count} trips</text>`;
+  const W = 560, H = 220;
+  const cx = 150, cy = 108, radius = 78;
+  const total = business + personal;
+  const polar = (angle) => {
+    const radians = (angle - 90) * Math.PI / 180;
+    return [cx + radius * Math.cos(radians), cy + radius * Math.sin(radians)];
   };
+  const slice = (value, color, label, count, startAngle) => {
+    const endAngle = startAngle + (value / total) * 360;
+    const [x1, y1] = polar(startAngle);
+    const [x2, y2] = polar(endAngle);
+    const largeArc = endAngle - startAngle > 180 ? 1 : 0;
+    return `<path class="pie-slice" d="M ${cx} ${cy} L ${x1.toFixed(1)} ${y1.toFixed(1)} A ${radius} ${radius} 0 ${largeArc} 1 ${x2.toFixed(1)} ${y2.toFixed(1)} Z" fill="${color}" stroke="${themeColor("--surface", "#fff")}" stroke-width="3"><title>${label}: ${value.toLocaleString()} km across ${count} trips</title></path>`;
+  };
+  const businessPct = Math.round((business / total) * 100);
+  const personalPct = 100 - businessPct;
 
-  container.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Business vs personal driving">
-    <line x1="${PAD.left}" y1="${H - PAD.bottom}" x2="${W - PAD.right}" y2="${H - PAD.bottom}" stroke="${palette.track}"/>
-    ${bar(x0, business, palette.primary, "Business", businessTrips)}
-    ${bar(x1, personal, palette.muted, "Personal", personalTrips)}
+  container.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Business versus personal driving pie chart">
+    ${slice(business, palette.primary, "Business", businessTrips, 0)}
+    ${slice(personal, palette.muted, "Personal", personalTrips, (business / total) * 360)}
+    <circle cx="${cx}" cy="${cy}" r="42" fill="${themeColor("--surface", "#fff")}"/>
+    <text x="${cx}" y="${cy - 2}" font-size="22" font-weight="700" text-anchor="middle" fill="currentColor">${businessPct}%</text>
+    <text x="${cx}" y="${cy + 16}" font-size="10" text-anchor="middle" fill="currentColor" opacity="0.6">business</text>
+    <g transform="translate(300 72)"><rect width="10" height="10" fill="${palette.primary}"/><text x="18" y="10" font-size="12" fill="currentColor">Business · ${businessPct}%</text><text x="18" y="28" font-size="10" fill="currentColor" opacity="0.6">${business.toLocaleString()} km · ${businessTrips} trips</text></g>
+    <g transform="translate(300 132)"><rect width="10" height="10" fill="${palette.muted}"/><text x="18" y="10" font-size="12" fill="currentColor">Personal · ${personalPct}%</text><text x="18" y="28" font-size="10" fill="currentColor" opacity="0.6">${personal.toLocaleString()} km · ${personalTrips} trips</text></g>
   </svg>`;
 
   if (insight) {
@@ -430,7 +448,7 @@ function renderAnomalies(analyticsData) {
   const tripItems = tripAnomalies.map(
     (a) => `
     <div class="anomaly-item">
-      <span class="a-icon">🛣️</span>
+      <span class="a-icon">TRIP</span>
       <div>
         <div>A trip of <strong>${a.distanceKm.toLocaleString()} km</strong> — ${Math.abs(a.deviationPct).toFixed(0)}% ${a.direction === "above" ? "longer" : "shorter"} than your usual ${a.averageKm.toLocaleString()} km
           <span class="pill ${a.direction === "above" ? "pill-worse" : "pill-better"}">${a.deviationPct > 0 ? "+" : ""}${a.deviationPct}%</span>
@@ -443,7 +461,7 @@ function renderAnomalies(analyticsData) {
   const fuelItems = fuelAnomalies.map(
     (a) => `
     <div class="anomaly-item">
-      <span class="a-icon">⛽</span>
+      <span class="a-icon">FUEL</span>
       <div>
         <div>A fill-up used <strong>${a.consumption} L/100km</strong> — ${Math.abs(a.deviationPct).toFixed(0)}% ${a.direction === "worse" ? "worse" : "better"} than your recent ${a.baseline} L/100km
           <span class="pill ${a.direction === "worse" ? "pill-worse" : "pill-better"}">${a.deviationPct > 0 ? "+" : ""}${a.deviationPct}%</span>

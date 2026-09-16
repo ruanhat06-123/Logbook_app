@@ -8,12 +8,29 @@ const vehicleOptions = settingsVehicles.map((item) => `<option value="${escapeHt
 
 const subscriptionState = await syncSubscription(user.id);
 const pricingCatalog = await fetch("../pricing.json").then((response) => response.json());
+const freeFeatures = [
+  `${FREE_TRIP_LIMIT} trip records per month`,
+  "Fuel and fill-up logging",
+  "Manual trip records and odometer history",
+  "Offline logging on this device",
+];
 const PLANS = Object.entries(pricingCatalog.plans).map(([tier, plan]) =>
-  ({ tier, cycle: "monthly", label: `${plan.label} · Monthly`, price: `${pricingCatalog.currency}${plan.monthly}/mo` }),
+  ({
+    tier,
+    cycle: "monthly",
+    label: plan.label,
+    price: `${pricingCatalog.currency}${plan.monthly}/mo`,
+    features: plan.features || [],
+  }),
 );
 const planButtons = PLANS.map(
   (plan) =>
-    `<button class="btn btn-secondary" type="button" data-checkout-tier="${plan.tier}" data-checkout-cycle="${plan.cycle}">${escapeHtml(plan.label)} — ${escapeHtml(plan.price)}</button>`,
+    `<article class="billing-plan${subscriptionState.tier === plan.tier ? " billing-plan-current" : ""}">
+      <div class="billing-plan-heading"><h3>${escapeHtml(plan.label)}</h3><strong>${escapeHtml(plan.price)}</strong></div>
+      <p class="billing-plan-caption">Includes:</p>
+      <ul class="billing-plan-features">${plan.features.map((feature) => `<li>${escapeHtml(feature)}</li>`).join("")}</ul>
+      <button class="btn btn-secondary" type="button" data-checkout-tier="${plan.tier}" data-checkout-cycle="${plan.cycle}">${subscriptionState.tier === plan.tier ? "Renew or manage" : `Choose ${escapeHtml(plan.label)}`}</button>
+    </article>`,
 ).join("");
 
 await shell("settings", `
@@ -63,8 +80,12 @@ await shell("settings", `
     <section class="card" id="billing" data-settings-section="billing">
       <div class="card-head"><h2>Subscription &amp; billing</h2></div>
       <p class="row-sub">Current plan: <strong>${escapeHtml(tierLabel(subscriptionState))}</strong> · Payment status: <strong>${escapeHtml(subscriptionState.paymentStatus)}</strong>${subscriptionState.expiryDate ? ` · Renews/expires ${escapeHtml(dateText(subscriptionState.expiryDate))}` : ""}</p>
-      <p class="row-sub">Free tier is limited to ${FREE_TRIP_LIMIT} trips/month. Premium and Fleet include SARS PDF exports; Free users can buy one for R${Number(pricingCatalog.sarsExport?.price || 99).toFixed(0)}.</p>
-      <div class="form-actions" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">${planButtons}</div>
+      <div class="billing-current-summary">
+        <strong>You are currently paying for:</strong>
+        <ul class="billing-plan-features">${(subscriptionState.tier === "free" ? freeFeatures : pricingCatalog.plans[subscriptionState.tier]?.features || []).map((feature) => `<li>${escapeHtml(feature)}</li>`).join("")}</ul>
+      </div>
+      <p class="row-sub">Choose a plan below to compare exactly what it includes. Premium and Fleet include SARS PDF exports; Free users can buy one for R${Number(pricingCatalog.sarsExport?.price || 99).toFixed(0)}.</p>
+      <div class="billing-plan-grid">${planButtons}</div>
       <div id="billing-notice" class="notice" hidden></div>
     </section>
     <section class="card" data-settings-section="appearance">

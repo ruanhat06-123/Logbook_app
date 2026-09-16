@@ -7,11 +7,46 @@
     <meta name="robots" content="index, follow" />
     <meta name="google-site-verification" content="K7CF578UzRKUtA6Zsd5Evl0czCloESDnkOxqaVnsjk0" />
     <meta name="theme-color" content="#0b3d52" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://logmate.co.za/" />
+    <meta property="og:title" content="LogMate | Vehicle, fuel, and trip logbook" />
+    <meta property="og:description" content="Track vehicles, fuel, trips, service reminders, and logbook records in one secure driving dashboard." />
+    <meta property="og:image" content="https://logmate.co.za/assets/logo.svg" />
+    <meta property="og:image:alt" content="LogMate logo" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="LogMate | Vehicle, fuel, and trip logbook" />
+    <meta name="twitter:description" content="Track vehicles, fuel, trips, service reminders, and logbook records in one secure driving dashboard." />
+    <meta name="twitter:image" content="https://logmate.co.za/assets/logo.svg" />
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; script-src 'self' https://esm.sh; connect-src 'self' https://*.supabase.co https://*.openrouteservice.org https://*.payfast.co.za; font-src 'self' data:; upgrade-insecure-requests; trusted-types default;" />
     <title>LogMate | Vehicle, fuel, and trip logbook</title>
-    <link rel="icon" type="image/svg+xml" href="assets/logo.svg" />
+    <link rel="icon" type="image/svg+xml" sizes="64x64" href="assets/logo.svg" />
+    <link rel="apple-touch-icon" sizes="64x64" href="assets/logo.svg" />
     <link rel="alternate" hreflang="en" href="https://logmate.co.za/" />
+    <link rel="stylesheet" href="bootstrap-5.3.8-dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="css/style.css" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Organization",
+            "@id": "https://logmate.co.za/#organization",
+            "name": "LogMate",
+            "url": "https://logmate.co.za/",
+            "logo": "https://logmate.co.za/assets/logo.svg"
+          },
+          {
+            "@type": "WebSite",
+            "@id": "https://logmate.co.za/#website",
+            "url": "https://logmate.co.za/",
+            "name": "LogMate",
+            "publisher": {
+              "@id": "https://logmate.co.za/#organization"
+            }
+          }
+        ]
+      }
+    </script>
   </head>
   <body>
     <main class="landing-page">
@@ -19,7 +54,7 @@
         <a class="brand" href="index.html"><img class="brand-mark" src="assets/logo.svg" alt="" /> LogMate</a>
         <div class="landing-nav-actions"><a class="landing-login" href="html/login.html">Log in</a><a class="btn btn-primary" href="html/login.html?mode=signup">Create account</a></div>
       </nav>
-      <section class="landing-hero">
+      <section class="landing-hero section-premium">
         <div class="landing-hero-copy">
           <div class="eyebrow">Your driving, in one place</div>
           <h1>Keep every journey moving.</h1>
@@ -36,7 +71,7 @@
           <div class="preview-service"><span>✓</span><div><small>SERVICE HISTORY</small><strong>Annual service · Invoice attached</strong></div><b>R 2,450</b></div>
         </div>
       </section>
-      <section class="landing-overview">
+      <section class="landing-overview section-premium">
         <div>
           <div class="eyebrow">Everything connected</div>
           <h2>A better record of the road.</h2>
@@ -86,6 +121,7 @@
       </section>
       <footer class="landing-footer"><span>LogMate</span><span>A clearer road ahead.</span><a href="html/login.html?mode=signup">Create your free account →</a></footer>
     </main>
+    <script src="bootstrap-5.3.8-dist/js/bootstrap.bundle.min.js"></script>
     <script type="module" src="js/landing.js?v=2"></script>
   </body>
 </html>

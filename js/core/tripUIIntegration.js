@@ -79,7 +79,8 @@ const STATUS_UPDATE_INTERVAL_MS = 5000;
 const NOTIFICATION_UPDATE_INTERVAL_MS = 15000;
 const DEFAULT_SMART_START_SPEED_MPS = 3;
 const DEFAULT_SMART_START_DISTANCE_METERS = 25;
-const SMART_START_CONFIRMATIONS = 2;
+const SMART_START_CONFIRMATIONS = 3;
+const SMART_ACCURACY_THRESHOLD_METERS = 15;
 const DEFAULT_SMART_STOP_AFTER_MINUTES = 3;
 
 const boundedLocalNumber = (key, fallback, min, max) => {
@@ -123,6 +124,14 @@ export async function initializeTripUI() {
     endBtn.addEventListener("click", handleEndTrip);
   }
 
+  const storedActiveTrip = await getLocalStore("activeTripSession");
+  if (storedActiveTrip?.startTime && !getTrackingStatus().isTracking) {
+    await handleStartTrip(undefined, {
+      automatic: storedActiveTrip.automatic === true,
+      resumeSession: storedActiveTrip,
+    });
+  }
+
   if (localStorage.getItem("smartTrips") === "on") startSmartTripMonitor();
 
   // Listen for "End trip" action from the notification
@@ -139,11 +148,18 @@ export async function initializeTripUI() {
 /**
  * Handle "Start trip" button click
  */
-async function handleStartTrip(event, { automatic = false } = {}) {
+async function handleStartTrip(
+  event,
+  { automatic = false, resumeSession = null } = {},
+) {
   event?.preventDefault?.();
 
   const vehicleSelect = document.getElementById("vehicle");
   const vehicleId = vehicleSelect?.value;
+
+  if (resumeSession?.vehicleId && vehicleSelect) {
+    vehicleSelect.value = resumeSession.vehicleId;
+  }
 
   if (!vehicleId && !automatic) {
     alert("Please select a vehicle");
@@ -151,7 +167,9 @@ async function handleStartTrip(event, { automatic = false } = {}) {
   }
 
   try {
-    const result = await startTripTracking();
+    const result = await startTripTracking({
+      startTime: resumeSession?.startTime || Date.now(),
+    });
 
     if (!result.success) {
       alert(`Failed to start trip: ${result.message}`);
@@ -182,7 +200,7 @@ async function handleStartTrip(event, { automatic = false } = {}) {
     }
 
     // Create active trip session
-    activeTripSession = {
+    activeTripSession = resumeSession || {
       vehicleId,
       startTime: Date.now(),
       startedAt: new Date().toLocaleString(),
@@ -429,7 +447,7 @@ function handleSmartLocation({ latitude, longitude, speed, timestamp }) {
   }
 }
 
-async function startSmartTripMonitor() {
+export async function startSmartTripMonitor() {
   if (smartWatchId !== null || nativeSmartWatcherId !== null) return;
   smartLastMovementAt = Date.now();
   if (isNativeBackgroundLocationAvailable()) {
@@ -452,7 +470,7 @@ async function startSmartTripMonitor() {
         timestamp: position.timestamp || Date.now(),
       }),
       (err) => warn("Smart Trips location monitor:", err.message),
-      { enableHighAccuracy: false, timeout: 30000, maximumAge: 15000 },
+      { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 },
     );
   }
   if (!smartMonitorInterval) smartMonitorInterval = setInterval(() => {

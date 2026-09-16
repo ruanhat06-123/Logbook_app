@@ -19,7 +19,7 @@ export async function startNativeBackgroundWatcher(onLocation, onError) {
       backgroundTitle: "LogMate Smart Trips",
       requestPermissions: true,
       stale: false,
-      distanceFilter: 5,
+      distanceFilter: 0,
     },
     (location, error) => {
       if (error) {

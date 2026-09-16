@@ -28,8 +28,8 @@ let wakeLockVisibilityHandler = null;
 // Configuration
 const GPS_CONFIG = {
   enableHighAccuracy: true,
-  timeout: 20000, // Allow the GPS hardware more time between wake-ups.
-  maximumAge: 5000, // Reuse a recent fix when it is sufficiently fresh.
+  timeout: 30000,
+  maximumAge: 0,
 };
 
 // Filter out GPS points with poor accuracy (> 15 meters)
@@ -37,7 +37,7 @@ const ACCURACY_THRESHOLD = 15;
 
 // Only record a point if the driver has moved > 5 meters from the last
 // recorded point (captures more of the actual route without jitter)
-const MINIMUM_DISTANCE_METERS = 5;
+const MINIMUM_DISTANCE_METERS = 0;
 
 // Reject physically impossible GPS jumps — anything implying a speed above
 // 60 m/s (~216 km/h) between fixes is a GPS glitch, not real movement.
@@ -133,7 +133,7 @@ function scheduleCoordinatePersistence() {
  * location is known right away, then keeps recording the route locally.
  * Returns: { success: boolean, message: string }
  */
-export async function startTripTracking() {
+export async function startTripTracking({ startTime = Date.now() } = {}) {
   if (isTracking) {
     warn("Trip tracking already active");
     return { success: false, message: "Tracking already in progress" };
@@ -148,8 +148,8 @@ export async function startTripTracking() {
   try {
     // Initialize trip coordinates array from storage or create new
     tripCoordinates = (await getLocalStore("tripCoordinates")) || [];
-    tripStartTime = Date.now();
-    lastRecordedCoord = null;
+    tripStartTime = startTime;
+    lastRecordedCoord = tripCoordinates.at(-1) || null;
     isTracking = true;
 
     log("Trip tracking started", { timestamp: tripStartTime, storedCoords: tripCoordinates.length });
@@ -197,7 +197,17 @@ export async function startTripTracking() {
  */
 function handlePositionSuccess(position) {
   const { latitude, longitude, accuracy, altitude, heading, speed } = position.coords;
-  const timestamp = position.timestamp;
+  const timestamp = position.timestamp || Date.now();
+
+  if (
+    !Number.isFinite(latitude) ||
+    !Number.isFinite(longitude) ||
+    !Number.isFinite(accuracy) ||
+    accuracy < 0
+  ) {
+    warn("Position rejected: invalid location fix");
+    return;
+  }
 
   // Filter 1: Accuracy check (reject if accuracy > 25 meters)
   if (accuracy > ACCURACY_THRESHOLD) {
@@ -255,8 +265,11 @@ function handlePositionSuccess(position) {
     accuracy: accuracy.toFixed(1),
   });
 
-  // Batch writes so long trips do not wake IndexedDB for every GPS fix.
-  scheduleCoordinatePersistence();
+  // Persist every accepted fix so a background interruption cannot discard
+  // the most recent part of the route.
+  void setLocalStore("tripCoordinates", tripCoordinates).catch((err) => {
+    error("Failed to persist coordinates to local storage:", err);
+  });
 
   // Dispatch custom event for UI updates
   window.dispatchEvent(
