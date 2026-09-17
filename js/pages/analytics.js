@@ -13,6 +13,7 @@ import {
   requestServiceNotifications,
   restorePendingServiceReminders,
 } from "../core/serviceReminder.js";
+import { getLocalStore, setLocalStore } from "../core/localStore.js";
 
 const user = await requireAuth();
 if (!user) throw new Error("Not authenticated");
@@ -104,7 +105,8 @@ await shell(
     .analytics-card:nth-child(2) { border-top-color: var(--mint); }
     .analytics-card:nth-child(3) { border-top-color: var(--yellow); }
     .analytics-card:nth-child(4) { border-top-color: var(--coral); }
-    .analytics-card:nth-child(5) { grid-column: 1 / -1; border-top-color: var(--ink); }
+    .analytics-card:nth-child(5) { border-top-color: var(--teal); }
+    .analytics-card:nth-child(6) { grid-column: 1 / -1; border-top-color: var(--ink); }
     .analytics-card h3 { margin: 0 0 6px; font-family: Georgia, "Times New Roman", serif; font-size: 22px; letter-spacing: -0.02em; }
     .analytics-card .card-sub { color: var(--muted); font-size: 12px; margin-bottom: 20px; line-height: 1.6; }
     .alert-banner { padding: 14px 16px; border: 1px solid var(--line); border-left: 3px solid; border-radius: 0; margin-bottom: 12px; font-size: 13px; display: flex; gap: 12px; align-items: flex-start; background: var(--surface); }
@@ -119,6 +121,9 @@ await shell(
     .stat-row strong { white-space: nowrap; text-align: right; color: var(--ink); }
     .chart-wrap { width: 100%; padding: 10px 8px 0; background: color-mix(in srgb, var(--paper) 55%, var(--surface)); }
     .chart-wrap-efficiency { border-radius: 14px; overflow: hidden; }
+    .location-heatmap-wrap { height: 360px; padding: 0; overflow: hidden; border-radius: 8px; }
+    .location-heatmap-wrap .mapboxgl-map { min-height: 360px; }
+    .location-heatmap-wrap .mapboxgl-ctrl-attrib { font-size: 10px; }
     .chart-wrap svg { width: 100%; height: auto; display: block; }
     .chart-wrap path, .chart-wrap circle, .chart-wrap rect { transition: opacity 260ms ease, transform 700ms cubic-bezier(.22, 1, .36, 1); }
     .chart-wrap .analytics-line { stroke-dasharray: 700; stroke-dashoffset: 700; animation: analytics-line-in 900ms ease-out forwards; }
@@ -147,7 +152,7 @@ await shell(
       .analytics-hero { display: block; }
       .analytics-hero-note { display: block; margin-top: 10px; }
       .analytics-grid { grid-template-columns: 1fr; }
-      .analytics-card:nth-child(5) { grid-column: auto; }
+      .analytics-card:nth-child(6) { grid-column: auto; }
     }
   </style>
 
@@ -190,6 +195,13 @@ await shell(
       <div class="stat-list" id="predictions-list"></div>
     </section>
 
+    <section class="card analytics-card" aria-labelledby="locations-title">
+      <h3 id="locations-title">Visited locations</h3>
+      <div class="card-sub">See where your journeys have taken you</div>
+      <div class="chart-wrap location-heatmap-wrap" id="location-heatmap"></div>
+      <p class="insight-plain" id="locations-insight"></p>
+    </section>
+
     <section class="card analytics-card" style="grid-column: 1 / -1" aria-labelledby="anomalies-title">
       <h3 id="anomalies-title">Things worth a look</h3>
       <div class="card-sub">Unusual trips or fill-ups compared to your own history</div>
@@ -205,6 +217,226 @@ restorePendingServiceReminders(vehicleRows);
 
 const alertsEl = document.querySelector("#analytics-alerts");
 
+// Coordinates come from saved trip fields and local trip traces. Mapbox is
+// loaded once for this page; no location search or reverse-geocoding is used.
+const parseCoordinateText = (value) => {
+  const match = String(value || "").match(/(-?\d{1,3}(?:\.\d+)?)\s*[,; ]\s*(-?\d{1,3}(?:\.\d+)?)/);
+  if (!match) return null;
+  const first = Number(match[1]);
+  const second = Number(match[2]);
+  const latitude = Math.abs(first) <= 90 ? first : second;
+  const longitude = Math.abs(first) <= 90 ? second : first;
+  if (Math.abs(latitude) > 90 || Math.abs(longitude) > 180) return null;
+  return { latitude, longitude };
+};
+
+const appendCoordinates = (target, values) => {
+  if (!values) return;
+  if (typeof values === "string") {
+    try {
+      appendCoordinates(target, JSON.parse(values));
+    } catch {}
+    return;
+  }
+  if (Array.isArray(values)) {
+    const first = Number(values[0]);
+    const second = Number(values[1]);
+    if (values.length >= 2 && Number.isFinite(first) && Number.isFinite(second)) {
+      const longitude = first;
+      const latitude = second;
+      if (Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180) target.push({ latitude, longitude });
+      return;
+    }
+    values.forEach((value) => appendCoordinates(target, value));
+    return;
+  }
+  if (typeof values !== "object") return;
+  if (values.coordinates) appendCoordinates(target, values.coordinates);
+  const latitude = Number(values.latitude ?? values.lat);
+  const longitude = Number(values.longitude ?? values.lon ?? values.lng);
+  if (Number.isFinite(latitude) && Number.isFinite(longitude) && Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180) {
+    target.push({ latitude, longitude });
+  }
+};
+
+const appendLocationLabels = (target, values) => {
+  if (!values) return;
+  if (Array.isArray(values)) {
+    values.forEach((value) => appendLocationLabels(target, value));
+    return;
+  }
+  if (typeof values !== "object") return;
+  const locationKeys = [
+    "trip_origin",
+    "trip_destination",
+    "origin",
+    "destination",
+    "originLabel",
+    "destinationLabel",
+    "start_location",
+    "end_location",
+  ];
+  locationKeys.forEach((key) => {
+    if (typeof values[key] === "string" && values[key].trim()) target.push(values[key].trim());
+  });
+  Object.values(values).forEach((value) => {
+    if (value && typeof value === "object") appendLocationLabels(target, value);
+  });
+};
+
+async function collectVisitedCoordinates() {
+  const points = [];
+  const labels = [];
+  tripRows.forEach((trip) => {
+    const locations = [trip.trip_origin, trip.origin, trip.start_location, trip.trip_destination, trip.destination, trip.end_location];
+    locations.forEach((location) => {
+      const point = parseCoordinateText(location);
+      if (point) points.push(point);
+      else if (location) labels.push(String(location).trim());
+    });
+  });
+  try {
+    const localTrips = await Promise.all([
+      getLocalStore("tripCoordinates"),
+      getLocalStore("cachedTripPayload"),
+      getLocalStore("pendingTripData"),
+      getLocalStore("pendingTrips"),
+      getLocalStore("syncedTrips"),
+    ]);
+    localTrips.forEach((value) => {
+      appendCoordinates(points, value);
+      appendLocationLabels(labels, value);
+    });
+  } catch (err) {
+    console.warn("Visited location cache unavailable:", err);
+  }
+
+  const token = window.__ENV?.VITE_MAPBOX_TOKEN || "";
+  if (token && navigator.onLine) {
+    const labelCounts = new Map();
+    labels.filter((label) => label.length >= 3).forEach((label) => {
+      const normalized = label.toLowerCase();
+      labelCounts.set(normalized, { label, count: (labelCounts.get(normalized)?.count || 0) + 1 });
+    });
+    for (const { label, count } of labelCounts.values()) {
+      const cacheKey = `locationgeocache_${label.toLowerCase()}`;
+      try {
+        const cached = await getLocalStore(cacheKey);
+        if (cached) {
+          for (let index = 0; index < count; index += 1) appendCoordinates(points, cached);
+          continue;
+        }
+        const response = await fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(label)}.json?access_token=${encodeURIComponent(token)}&country=za&limit=1`);
+        const feature = response.ok ? (await response.json())?.features?.[0] : null;
+        const coordinates = feature?.center;
+        if (Array.isArray(coordinates) && coordinates.length >= 2) {
+          const point = { latitude: Number(coordinates[1]), longitude: Number(coordinates[0]) };
+          await setLocalStore(cacheKey, point);
+          for (let index = 0; index < count; index += 1) points.push(point);
+        }
+      } catch (err) {
+        console.warn("Location lookup skipped:", err);
+      }
+    }
+  }
+  return points;
+}
+
+async function renderLocationHeatmap() {
+  const container = document.querySelector("#location-heatmap");
+  const insight = document.querySelector("#locations-insight");
+  if (!container) return;
+  const points = await collectVisitedCoordinates();
+  if (!points.length) {
+    container.innerHTML = '<div class="chart-empty">Your visited locations will appear here after you record a few trips.</div>';
+    if (insight) insight.textContent = "Add a trip to get started.";
+    return;
+  }
+
+  const token = window.__ENV?.VITE_MAPBOX_TOKEN || "";
+  if (!token) {
+    container.innerHTML = '<div class="chart-empty">The map is temporarily unavailable.</div>';
+    if (insight) insight.textContent = "Please try again later.";
+    return;
+  }
+
+  const cssHref = "https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css";
+  const scriptSrc = "https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js";
+  if (!document.querySelector(`link[href="${cssHref}"]`)) {
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = cssHref;
+    document.head.appendChild(link);
+  }
+  if (!window.mapboxgl) {
+    await new Promise((resolve, reject) => {
+      const script = document.querySelector(`script[src="${scriptSrc}"]`) || document.createElement("script");
+      if (!script.src) {
+        script.src = scriptSrc;
+        script.onload = resolve;
+        script.onerror = () => reject(new Error("Map unavailable"));
+        document.head.appendChild(script);
+      } else if (window.mapboxgl) resolve();
+      else script.addEventListener("load", resolve, { once: true });
+    });
+  }
+
+  const bounds = new mapboxgl.LngLatBounds();
+  const featureCollection = {
+    type: "FeatureCollection",
+    features: points.map((point) => {
+      bounds.extend([point.longitude, point.latitude]);
+      return { type: "Feature", properties: {}, geometry: { type: "Point", coordinates: [point.longitude, point.latitude] } };
+    }),
+  };
+  const mapStyle = () => document.documentElement.dataset.theme === "dark"
+    ? "mapbox://styles/mapbox/dark-v11"
+    : "mapbox://styles/mapbox/streets-v12";
+  const addHeatmapLayers = (map) => {
+    if (map.getSource("visited-locations")) return;
+    map.addSource("visited-locations", { type: "geojson", data: featureCollection });
+    map.addLayer({
+      id: "visited-heat",
+      type: "heatmap",
+      source: "visited-locations",
+      maxzoom: 15,
+      paint: {
+        "heatmap-weight": 1,
+        "heatmap-intensity": ["interpolate", ["linear"], ["zoom"], 0, 1, 12, 2.2],
+        "heatmap-radius": ["interpolate", ["linear"], ["zoom"], 0, 18, 12, 32],
+        "heatmap-opacity": 0.82,
+        "heatmap-color": ["interpolate", ["linear"], ["heatmap-density"], 0, "rgba(255,235,235,0)", 0.2, "#fee2e2", 0.45, "#fca5a5", 0.7, "#ef4444", 1, "#991b1b"],
+      },
+    });
+    map.addLayer({
+      id: "visited-points",
+      type: "circle",
+      source: "visited-locations",
+      minzoom: 11,
+      paint: { "circle-radius": 4, "circle-color": "#f6c85f", "circle-stroke-color": "#ffffff", "circle-stroke-width": 1, "circle-opacity": 0.82 },
+    });
+  };
+  mapboxgl.accessToken = token;
+  container.innerHTML = "";
+  const map = new mapboxgl.Map({
+    container,
+    style: mapStyle(),
+    bounds,
+    fitBoundsOptions: { padding: 44, maxZoom: 13 },
+    attributionControl: true,
+  });
+  map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-right");
+  map.on("load", () => addHeatmapLayers(map));
+  const themeObserver = new MutationObserver(() => {
+    const nextStyle = mapStyle();
+    if (map.getStyle()?.sprite?.includes(nextStyle)) return;
+    map.setStyle(nextStyle);
+    map.once("style.load", () => addHeatmapLayers(map));
+  });
+  themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  if (insight) insight.textContent = `${points.length.toLocaleString()} visited points across your recorded journeys.`;
+}
+
 // ---------- Friendly empty state when there's nothing to analyze ----------
 if (!analytics || !hasData) {
   alertsEl.innerHTML = `
@@ -215,6 +447,8 @@ if (!analytics || !hasData) {
   document.querySelector("#efficiency-chart").innerHTML = '<div class="chart-empty">Log a couple of fill-ups to see your fuel efficiency trend.</div>';
   document.querySelector("#category-chart").innerHTML = '<div class="chart-empty">Record trips to see your business vs personal split.</div>';
   document.querySelector("#compliance-gauge").innerHTML = '<div class="chart-empty">Set a next-service mileage on your vehicles to track service health.</div>';
+  document.querySelector("#location-heatmap").innerHTML = '<div class="chart-empty">Log trips with precise map points to see visited locations.</div>';
+  document.querySelector("#locations-insight").textContent = "Add a trip to get started.";
   document.querySelector("#predictions-list").innerHTML = '<div class="chart-empty">Predictions appear once you\'ve logged some driving.</div>';
   document.querySelector("#anomalies-list").innerHTML = '<div class="chart-empty">Anomalies are detected automatically once there\'s enough history.</div>';
   throw new Error("No analytics data yet");
@@ -480,6 +714,7 @@ renderCategoryChart(analytics.charts?.categories || { business: 0, personal: 0, 
 renderComplianceGauge(analytics.service?.compliance || { score: 100, overdueCount: 0, dueSoonCount: 0, trackedCount: 0 }, analytics.service?.intervals || []);
 renderPredictions(analytics);
 renderAnomalies(analytics);
+await renderLocationHeatmap();
 
 console.log("[analytics] dashboard rendered", {
   alerts: analytics.alerts?.length ?? 0,

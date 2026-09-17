@@ -19,7 +19,9 @@
     "@capacitor-community/background-geolocation": "^1.2.26",
     "@capacitor/core": "^7.4.4",
     "@supabase/supabase-js": "^2.45.4",
+    "adm-zip": "^0.6.1",
     "dotenv": "^16.4.5",
+    "exceljs": "^4.4.0",
     "express": "^4.19.2",
     "node-fetch": "^2.7.0"
   },

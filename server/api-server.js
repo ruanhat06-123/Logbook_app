@@ -8,6 +8,7 @@ const express = require("express");
 const crypto = require("crypto");
 const fetch = require("node-fetch"); // npm i node-fetch@2
 const { createClient } = require("@supabase/supabase-js"); // npm i @supabase/supabase-js
+const { getDmprFuelPrices } = require("./dmprFuelPrices");
 const pricingCatalog = require("../pricing.json");
 const app = express();
 app.disable("x-powered-by");
@@ -172,6 +173,21 @@ const PORT = process.env.PORT || 3000;
 
 app.get("/api/health", (req, res) => {
   res.json({ ok: true, service: "logmate-api", port: Number(PORT) });
+});
+
+app.get("/api/fuel-prices", async (req, res) => {
+  try {
+    const catalog = await getDmprFuelPrices();
+    const fuelType = String(req.query.fuelType || "petrol_95").toLowerCase();
+    const key = ["petrol_93", "petrol_95", "diesel_005", "diesel_05"].includes(fuelType) ? fuelType : "petrol_95";
+    const prices = catalog.prices
+      .map((row) => ({ region: row.region, price: row[key] }))
+      .filter((row) => Number.isFinite(row.price));
+    return res.json({ ...catalog, fuelType: key, prices });
+  } catch (err) {
+    console.error("DMPR fuel price scrape error", err);
+    return res.status(502).json({ error: "DMPR fuel prices are temporarily unavailable" });
+  }
 });
 
 // ---------------------------------------------------------------------------

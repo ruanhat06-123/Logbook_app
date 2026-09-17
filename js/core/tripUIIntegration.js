@@ -489,7 +489,7 @@ function showSmartTripReview(tripData) {
     .map((option) => `<option value="${option.value}">${option.textContent}</option>`)
     .join("");
   const endOdo = document.querySelector("#end-odo")?.value || "";
-  document.body.insertAdjacentHTML("beforeend", `<div class="smart-review-backdrop" data-smart-review><section class="smart-review" role="dialog" aria-modal="true" aria-labelledby="smart-review-title"><div class="eyebrow">Smart Trips / Review</div><h2 id="smart-review-title">Review your ended trip</h2><p class="row-sub">Smart Trips stopped recording after you stopped moving. Confirm these details before saving the trip.</p><div class="form-grid"><div class="field full"><label for="smart-review-vehicle">Vehicle</label><select id="smart-review-vehicle" required><option value="">Select a vehicle</option>${vehicles}</select></div><div class="field"><label for="smart-review-type">Trip type</label><select id="smart-review-type"><option value="personal">Personal</option><option value="business">Business</option></select></div><div class="field"><label for="smart-review-purpose">Purpose</label><select id="smart-review-purpose" required><option value="">Select purpose</option><option value="commute">Commute</option><option value="errand">Errand</option><option value="delivery">Delivery</option><option value="client_meeting">Client meeting</option><option value="other">Other</option></select></div><div class="field full"><label for="smart-review-end-odo">End odometer (km)</label><input id="smart-review-end-odo" type="number" min="0" step="1" value="${endOdo}" required></div></div><label class="setting-check"><input id="smart-review-confirm" type="checkbox"> I confirm the end odometer is correct.</label><div class="smart-review-actions"><button class="btn btn-primary" type="button" data-smart-confirm>Confirm details</button><button class="btn btn-secondary" type="button" data-smart-dismiss>Keep editing</button><button class="btn btn-secondary" type="button" data-smart-discard>Discard trip</button></div></section></div>`);
+  document.body.insertAdjacentHTML("beforeend", `<div class="smart-review-backdrop" data-smart-review><section class="smart-review" role="dialog" aria-modal="true" aria-labelledby="smart-review-title"><div class="eyebrow">Smart Trips / Review</div><h2 id="smart-review-title">Review your ended trip</h2><p class="row-sub">Smart Trips stopped recording after you stopped moving. Confirm these details before saving the trip.</p><div class="form-grid"><div class="field full"><label for="smart-review-vehicle">Vehicle</label><select id="smart-review-vehicle" required><option value="">Select a vehicle</option>${vehicles}</select></div><div class="field"><label for="smart-review-type">Trip type</label><select id="smart-review-type"><option value="personal">Personal</option><option value="business">Business</option></select></div><div class="field"><label for="smart-review-purpose">Purpose</label><select id="smart-review-purpose" required><option value="">Select purpose</option><option value="commute">Commute</option><option value="errand">Errand</option><option value="delivery">Delivery</option><option value="client_meeting">Client meeting</option><option value="other">Other</option></select></div><div class="field full"><label for="smart-review-end-odo">End odometer (km)</label><input id="smart-review-end-odo" type="number" min="0" step="1" value="${endOdo}" required></div></div><label class="setting-check"><input id="smart-review-confirm" type="checkbox"> I confirm the end odometer is correct.</label><div class="smart-review-actions"><button class="btn btn-primary" type="button" data-smart-confirm>Confirm details</button><button class="btn btn-secondary" type="button" data-smart-continue>Continue trip</button><button class="btn btn-secondary" type="button" data-smart-dismiss>Keep editing</button><button class="btn btn-secondary" type="button" data-smart-discard>Discard trip</button></div></section></div>`);
   const review = document.querySelector("[data-smart-review]");
   review.querySelector("[data-smart-confirm]").addEventListener("click", () => {
     const selectedVehicle = review.querySelector("#smart-review-vehicle").value;
@@ -504,6 +504,35 @@ function showSmartTripReview(tripData) {
     document.querySelector("#purpose").value = purpose;
     document.querySelector("#end-odo").value = review.querySelector("#smart-review-end-odo").value;
     review.remove();
+  });
+  review.querySelector("[data-smart-continue]").addEventListener("click", async () => {
+    const route = Array.isArray(tripData.rawCoordinates) ? tripData.rawCoordinates : [];
+    if (!route.length) {
+      review.querySelector(".row-sub").textContent = "There is no recorded route to continue.";
+      return;
+    }
+    const vehicleId = review.querySelector("#smart-review-vehicle").value || tripData.vehicleId;
+    if (!vehicleId) {
+      review.querySelector(".row-sub").textContent = "Select a vehicle before continuing the trip.";
+      return;
+    }
+    try {
+      await setLocalStore("tripCoordinates", route);
+      await setLocalStore("pendingTripData", null);
+      await setLocalStore("cachedTripPayload", null);
+      activeTripSession = {
+        vehicleId,
+        startTime: tripData.startTime || Date.now(),
+        startedAt: new Date(tripData.startTime || Date.now()).toLocaleString(),
+        automatic: true,
+      };
+      smartEnding = false;
+      review.remove();
+      await handleStartTrip(undefined, { automatic: true, resumeSession: activeTripSession });
+    } catch (err) {
+      error("Failed to continue Smart Trip:", err);
+      review.querySelector(".row-sub").textContent = "Unable to continue this trip. Please try again.";
+    }
   });
   review.querySelector("[data-smart-dismiss]").addEventListener("click", () => review.remove());
   review.querySelector("[data-smart-discard]").addEventListener("click", async () => {

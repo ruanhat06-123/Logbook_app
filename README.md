@@ -150,6 +150,10 @@ iOS cannot be built or installed on Kubuntu because Apple requires macOS and Xco
 
 The public web entry point is also an installable PWA. Supported browsers show an `Install LogMate` action when the browser makes installation available, and the service worker is registered automatically. When a browser cannot provide a native prompt, LogMate gives platform-specific instructions: Android uses the browser menu's **Install app** or **Add to Home screen**, desktop browsers use the address-bar install icon or browser menu, and iOS Safari uses **Share → Add to Home Screen**. Browser security still requires the user to confirm installation. A browser-installed PWA is separate from the native Capacitor Android/iOS app.
 
+### Fuel price source
+
+South African regional fuel suggestions use the official [DMPR Fuel Prices](https://www.dmpr.gov.za/Branches/Petroleum-Resources/Fuel-Prices) publication. The server fetches the current DMPR package at most once every six hours, reads its official fuel-price schedule workbook, returns the regulated zone prices, and the browser caches the resulting suggestion for offline use. If DMPR is unavailable, the last cached price or Supabase regional price is used.
+
 ## Notes & conventions
 
 - The service worker cache version (`CACHE_NAME` in [sw.js](sw.js)) must be bumped whenever JS modules change, otherwise clients keep serving stale code. The app calls `registration.update()` on load.

@@ -19,6 +19,16 @@ const writeCache = (cache) => setLocalStore(CACHE_KEY, cache);
 const cacheKeyFor = (countryCode, fuelType) =>
   `${String(countryCode || "").toUpperCase()}_${String(fuelType || "").toLowerCase()}`;
 
+const apiBaseUrl = () => {
+  if (typeof window !== "undefined" && window.__ENV?.VITE_API_URL) {
+    return window.__ENV.VITE_API_URL.replace(/\/$/, "");
+  }
+  if (typeof window !== "undefined" && ["localhost", "127.0.0.1"].includes(window.location.hostname)) {
+    return "http://localhost:3000";
+  }
+  return "";
+};
+
 /**
  * Detect the user's country code from the browser locale (defaults to ZA).
  */
@@ -27,9 +37,18 @@ export function detectCountryCode() {
   return (locale.split("-")[1] || "ZA").toUpperCase();
 }
 
+const normalizeFuelType = (value) => {
+  const type = String(value || "").toLowerCase().replace(/\s+/g, "_");
+  if (type.includes("93")) return "petrol_93";
+  if (type.includes("95")) return "petrol_95";
+  if (type.includes("ppm500") || type.includes("0.05")) return "diesel_05";
+  if (type.includes("ppm10") || type.includes("ppm50") || type.includes("0.005")) return "diesel_005";
+  return type;
+};
+
 /**
  * Get the suggested fuel price for a country + fuel type.
- * Tries Supabase first; on any failure (offline, error, no row) falls back
+ * Tries the cached DMPR proxy first for South Africa, then Supabase; on any failure (offline, error, no row) falls back
  * to the last cached price for the same combination, then to any cached
  * price for the country, and finally to the most recent cached price at all.
  *
@@ -41,13 +60,34 @@ export function detectCountryCode() {
  */
 export async function getRegionalFuelPrice({ supabase, countryCode, fuelType } = {}) {
   const country = String(countryCode || detectCountryCode()).toUpperCase();
-  const type = String(fuelType || "").toLowerCase();
+  const type = normalizeFuelType(fuelType);
   const empty = { price: null, currency: "R", region: "", source: "", fromCache: false, message: "No price available" };
 
   if (!country || !type) return empty;
 
   // 1) Try the network
   try {
+    if (country === "ZA" && navigator.onLine) {
+      const response = await fetch(`${apiBaseUrl()}/api/fuel-prices?fuelType=${encodeURIComponent(type)}`, { cache: "no-store" });
+      if (response.ok) {
+        const data = await response.json();
+        const regional = (data.prices || []).filter((row) => Number.isFinite(Number(row.price)));
+        if (regional.length) {
+          const average = regional.reduce((sum, row) => sum + Number(row.price), 0) / regional.length;
+          const record = {
+            price: Number(average.toFixed(2)),
+            currency: data.currency || "R",
+            region: "South Africa regional average",
+            source: "DMPR",
+            fetchedAt: data.fetchedAt || new Date().toISOString(),
+          };
+          const cache = await readCache();
+          cache[cacheKeyFor(country, type)] = record;
+          await writeCache(cache);
+          return { ...record, fromCache: false, message: `DMPR price effective ${data.effectiveFrom || "currently"}` };
+        }
+      }
+    }
     if (supabase && navigator.onLine) {
       const { data, error } = await supabase
         .from("regional_fuel_prices")

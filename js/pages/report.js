@@ -74,8 +74,8 @@ try {
   await shell(
     "report",
     `${printStyles}
-    <header class="topbar"><div><div class="eyebrow">Insights / reports</div><h1>See where it goes.</h1></div><div class="top-date"><strong>FUEL REPORT</strong>Updated just now</div></header>
-    <div class="card">
+    <header class="topbar report-topbar"><div><div class="eyebrow">Insights / reports</div><h1>See where it goes.</h1><p class="report-lede">Fuel, distance, and spend in one clear view.</p></div><div class="top-date"><strong>FUEL REPORT</strong>Updated just now</div></header>
+    <div class="card report-surface">
       <div class="report-controls">
         <div class="field">
           <label for="vehicle-filter">Vehicle</label>

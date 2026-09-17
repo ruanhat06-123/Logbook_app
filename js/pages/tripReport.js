@@ -114,8 +114,8 @@ try {
   await shell(
     "trip-report",
     `${printStyles}
-    <header class="topbar"><div><div class="eyebrow">Insights / trip reports</div><h1>Track every journey.</h1></div><div class="top-date"><strong>TRIP REPORT</strong>Odometer-led</div></header>
-    <div class="card">
+    <header class="topbar report-topbar"><div><div class="eyebrow">Insights / trip reports</div><h1>Track every journey.</h1><p class="report-lede">A focused record of where you drive and why.</p></div><div class="top-date"><strong>TRIP REPORT</strong>Odometer-led</div></header>
+    <div class="card report-surface">
       <div class="report-controls">
         <div class="field"><label for="vehicle-filter">Vehicle</label><select id="vehicle-filter"><option value="all">All vehicles</option>${vehicleRows.map(v => `<option value="${v.id}">${escapeHtml(v.number_plate || "")}</option>`).join("")}</select></div>
         <div class="field"><label for="trip-filter">Trip type</label><select id="trip-filter"><option value="all">All trips</option><option value="personal">Personal</option><option value="business">Business</option></select></div>
