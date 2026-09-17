@@ -142,7 +142,13 @@ The trip report captures and exports everything SARS requires: trip date, openin
 
 ## Native mobile app
 
-The web app can be packaged for Android and iOS with Capacitor. Install Node dependencies, build the static web assets, and sync the native projects with `npm run cap:sync`. Open Android Studio with `npm run cap:android`; iOS requires macOS with Xcode and CocoaPods before opening with `npm run cap:ios`. The native background-geolocation plugin keeps an active trip and Smart Trips movement monitor running with the platform's required location notification and permissions. Users must grant background location permission, and operating-system battery restrictions can still affect tracking.
+The web app can be packaged for Android and iOS with Capacitor. On Kubuntu/Linux, install Node.js 20 or newer, npm, a JDK, and the Android SDK/Android Studio. Then run `npm install`; this automatically builds the static web assets and syncs the native projects through the `postinstall` script. Install the Android debug app on a connected device with `npm run cap:android:install`, or open Android Studio with `npm run cap:android`.
+
+iOS cannot be built or installed on Kubuntu because Apple requires macOS and Xcode. On macOS, use `npm run cap:ios:build` or open the project with `npm run cap:ios` after installing Xcode and CocoaPods. The native background-geolocation plugin keeps an active trip and Smart Trips movement monitor running with the platform's required location notification and permissions. Users must grant background location permission, and operating-system battery restrictions can still affect tracking.
+
+### Browser installation
+
+The public web entry point is also an installable PWA. Supported browsers show an `Install LogMate` action when the browser makes installation available, and the service worker is registered automatically. When a browser cannot provide a native prompt, LogMate gives platform-specific instructions: Android uses the browser menu's **Install app** or **Add to Home screen**, desktop browsers use the address-bar install icon or browser menu, and iOS Safari uses **Share → Add to Home Screen**. Browser security still requires the user to confirm installation. A browser-installed PWA is separate from the native Capacitor Android/iOS app.
 
 ## Notes & conventions
 

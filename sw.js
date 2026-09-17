@@ -10,6 +10,7 @@ const APP_SHELL = [
   "/html/offline.html",
   // Core app modules
   "/js/landing.js",
+  "/js/core/installPrompt.js",
   "/js/core/app.js",
   "/js/core/env.js",
   "/js/core/supabaseClient.js",

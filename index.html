@@ -21,6 +21,7 @@
     <title>LogMate | Vehicle, fuel, and trip logbook</title>
     <link rel="icon" type="image/svg+xml" sizes="64x64" href="assets/logo.svg" />
     <link rel="apple-touch-icon" sizes="64x64" href="assets/logo.svg" />
+    <link rel="manifest" href="manifest.json" />
     <link rel="alternate" hreflang="en" href="https://logmate.co.za/" />
     <link rel="stylesheet" href="bootstrap-5.3.8-dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="css/style.css" />
@@ -59,7 +60,8 @@
           <div class="eyebrow">Your driving, in one place</div>
           <h1>Keep every journey moving.</h1>
           <p>LogMate brings vehicles, fuel, live trips, service history, reminders, and reports into one calm, useful logbook built for everyday driving.</p>
-          <div class="landing-actions"><a class="btn btn-primary" href="html/login.html?mode=signup">Start your logbook →</a><a class="landing-text-link" href="html/login.html">Already have an account? Log in</a></div>
+          <div class="landing-actions"><a class="btn btn-primary" href="html/login.html?mode=signup">Start your logbook →</a><button class="btn btn-secondary" type="button" id="install-app" hidden>Install LogMate</button><a class="landing-text-link" href="html/login.html">Already have an account? Log in</a></div>
+          <p class="install-help" id="install-help" hidden></p>
           <div class="landing-proof"><span>SARS-compliant logbooks</span><span>Smart trip notifications</span><span>Personal or business vehicles</span><span>Service history & reminders</span></div>
         </div>
         <div class="landing-dashboard-preview" aria-label="LogMate dashboard overview">

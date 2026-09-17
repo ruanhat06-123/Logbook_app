@@ -1,6 +1,19 @@
 import { setupCookieConsent } from "./core/consent.js";
+import { setupInstallPrompt } from "./core/installPrompt.js";
 
 setupCookieConsent();
+setupInstallPrompt({
+  button: document.querySelector("#install-app"),
+  help: document.querySelector("#install-help"),
+});
+
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("sw.js", { scope: "/" }).then((registration) => {
+    registration.update().catch(() => {});
+  }).catch((error) => {
+    console.warn("LogMate service worker registration failed", error);
+  });
+}
 
 const readCookie = (name) => document.cookie.split("; ").find((item) => item.startsWith(`${name}=`));
 const hasCachedAccount = () => {

@@ -4,8 +4,11 @@
   "version": "1.0.0",
   "scripts": {
     "start": "node server/api-server.js",
+    "postinstall": "npm run cap:sync",
     "cap:build": "node scripts/capacitor-build.mjs",
     "cap:sync": "npm run cap:build && node node_modules/@capacitor/cli/bin/capacitor sync",
+    "cap:android:install": "npm run cap:sync && cd android && ./gradlew installDebug",
+    "cap:ios:build": "npm run cap:sync && xcodebuild -workspace ios/App/App.xcworkspace -scheme App -configuration Debug -destination generic/platform=iOS build",
     "cap:android": "node node_modules/@capacitor/cli/bin/capacitor open android",
     "cap:ios": "node node_modules/@capacitor/cli/bin/capacitor open ios"
   },

@@ -1,6 +1,7 @@
 import { supabase } from "../core/supabaseClient.js";
 import { syncSubscription } from "../core/subscription.js";
 import { setupCookieConsent } from "../core/consent.js";
+import { setupInstallPrompt } from "../core/installPrompt.js";
 
 setupCookieConsent();
 
@@ -20,12 +21,10 @@ async function continueWithOfflineSession() {
   return true;
 }
 
-let deferredInstallPrompt = null;
 const installButton = document.querySelector("#install-app");
-window.addEventListener("beforeinstallprompt", (event) => {
-  event.preventDefault();
-  deferredInstallPrompt = event;
-  installButton.hidden = false;
+setupInstallPrompt({
+  button: installButton,
+  help: document.querySelector("#install-help"),
 });
 
 // ---------- Biometric (WebAuthn) login ----------
@@ -218,17 +217,6 @@ biometricButton?.addEventListener("click", async () => {
 });
 updateBiometricButtonVisibility();
 
-installButton.addEventListener("click", async () => {
-  if (!deferredInstallPrompt) return;
-  deferredInstallPrompt.prompt();
-  await deferredInstallPrompt.userChoice;
-  deferredInstallPrompt = null;
-  installButton.hidden = true;
-});
-window.addEventListener("appinstalled", () => {
-  deferredInstallPrompt = null;
-  installButton.hidden = true;
-});
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("../sw.js", { scope: "/" }).then((registration) => {
     // Check for an updated service worker on every load so stale cached
