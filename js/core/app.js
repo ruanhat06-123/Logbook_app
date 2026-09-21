@@ -144,6 +144,32 @@ const setButtonBusy = (button, isBusy, busyLabel = "Working…") => {
   }
 };
 
+const enhanceBootstrapUI = () => {
+  document.querySelectorAll(".field input, .field textarea").forEach((control) => {
+    control.classList.add("form-control");
+  });
+  document.querySelectorAll(".field select").forEach((control) => {
+    control.classList.add("form-select");
+  });
+  document.querySelectorAll(".app-status").forEach((status) => {
+    const tone = status.classList.contains("app-status-error")
+      ? "danger"
+      : status.classList.contains("app-status-success")
+        ? "success"
+        : "info";
+    status.classList.add("alert", `alert-${tone}`);
+  });
+  document.querySelectorAll(".notice").forEach((notice) => {
+    notice.classList.add("alert", "alert-light");
+  });
+  document.querySelectorAll(".table").forEach((table) => {
+    table.classList.add("table-striped", "table-hover", "align-middle");
+  });
+  document.querySelectorAll(".btn-small").forEach((button) => {
+    button.classList.add("btn-sm");
+  });
+};
+
 /**
  * Render the left navigation and user info
  */
@@ -165,12 +191,13 @@ function renderNav(active, user, subscriptionState) {
         .join("") || "U";
 
   const navLink = (key, href, icon, label) =>
-    `<a class="${active === key ? "active" : ""}" href="${href}"${active === key ? ' aria-current="page"' : ""}><span class="nav-icon" aria-hidden="true">${icon}</span>${label}</a>`;
+    `<a class="nav-link ${active === key ? "active" : ""}" href="${href}"${active === key ? ' aria-current="page"' : ""}><span class="nav-icon" aria-hidden="true">${icon}</span>${label}</a>`;
   const fleetLink = isFleetTier(subscriptionState)
     ? navLink("fleet", "fleet.html", "⚑", "Fleet")
     : "";
 
-  nav.innerHTML = `<div class="brand"><img class="brand-mark" src="../assets/logo.svg" alt="" /> LogMate</div><div class="nav-label">Workspace</div><nav class="nav" aria-label="Main navigation">${navLink("home", "dashboard.html", "⌂", "Overview")}${navLink("vehicles", "vehicles.html", "▣", "My vehicles")}${navLink("logbook", "logbook.html", "＋", "New fill-up")}${navLink("trip", "trip.html", "↗", "New trip")}${navLink("report", "report.html", "▤", "Fuel reports")}${navLink("trip-report", "trip-report.html", "◫", "Trip reports")}${navLink("analytics", "analytics.html", "∿", "Analytics")}${fleetLink}${navLink("help", "help.html", "?", "Help")}</nav><a class="nav-settings ${active === "settings" ? "active" : ""}" href="settings.html"${active === "settings" ? ' aria-current="page"' : ""} aria-label="Settings" title="Settings"><span class="nav-icon" aria-hidden="true">⚙</span><span>Settings</span></a><div class="sidebar-footer"><div class="user-chip"><span class="avatar">${escapeHtml(initials)}</span><div><div class="user-name">${escapeHtml(displayName)}</div><div class="user-role">${escapeHtml(tierLabel(subscriptionState))} account</div></div></div><button class="signout" data-signout>Sign out →</button></div>`;
+  nav.innerHTML = `<div class="brand navbar-brand"><img class="brand-mark" src="../assets/logo.svg" alt="" /> LogMate</div><div class="nav-label">Workspace</div><nav class="nav nav-pills flex-column" aria-label="Main navigation">${navLink("home", "dashboard.html", "⌂", "Overview")}${navLink("vehicles", "vehicles.html", "▣", "My vehicles")}${navLink("logbook", "logbook.html", "＋", "New fill-up")}${navLink("trip", "trip.html", "↗", "New trip")}${navLink("report", "report.html", "▤", "Fuel reports")}${navLink("trip-report", "trip-report.html", "◫", "Trip reports")}${navLink("analytics", "analytics.html", "∿", "Analytics")}${fleetLink}${navLink("help", "help.html", "?", "Help")}</nav><a class="nav-settings nav-link ${active === "settings" ? "active" : ""}" href="settings.html"${active === "settings" ? ' aria-current="page"' : ""} aria-label="Settings" title="Settings"><span class="nav-icon" aria-hidden="true">⚙</span><span>Settings</span></a><div class="sidebar-footer"><div class="user-chip"><span class="avatar">${escapeHtml(initials)}</span><div><div class="user-name">${escapeHtml(displayName)}</div><div class="user-role">${escapeHtml(tierLabel(subscriptionState))} account</div></div></div><button class="signout" data-signout>Sign out →</button></div>`;
+  nav.querySelector(".user-role")?.classList.add("badge", "text-bg-secondary");
 }
 
 /**
@@ -195,9 +222,12 @@ async function shell(active, content) {
   const subscriptionState = await getSubscriptionState(user.id);
   const banner = subscriptionBannerMarkup(subscriptionState);
 
-  document.body.innerHTML = `<div class="app-shell"><aside class="sidebar"><div data-nav></div></aside><main class="main">${banner}${content}</main></div>`;
+  document.body.innerHTML = `<div class="app-shell"><aside class="sidebar navbar navbar-dark"><div data-nav></div></aside><main class="main container-fluid">${banner}${content}</main></div>`;
   globalThis.LogMateUI?.finishLoading();
   renderNav(active, user, subscriptionState);
+  enhanceBootstrapUI();
+  const bootstrapObserver = new MutationObserver(enhanceBootstrapUI);
+  bootstrapObserver.observe(document.querySelector(".main"), { childList: true, subtree: true });
   setupCookieConsent();
 
   const themeToggle = document.createElement("button");

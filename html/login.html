@@ -56,6 +56,11 @@
               </div>
               <small id="password-help" class="field-help" hidden>Use at least 8 characters, including an uppercase letter, a lowercase letter, and a number.</small>
             </div>
+            <div class="signup-human-check form-check mb-3" id="signup-human-check" hidden>
+              <input class="form-check-input" id="not-a-robot" type="checkbox" required />
+              <label class="form-check-label" for="not-a-robot">I’m not a robot</label>
+            </div>
+            <input id="website" name="website" class="visually-hidden" type="text" tabindex="-1" autocomplete="off" aria-hidden="true" />
             <button class="btn btn-primary" type="submit" id="submit-button">Sign in →</button>
             <button class="btn btn-secondary" type="button" id="biometric-login" hidden>🔓 Sign in with biometrics</button>
             <button class="auth-link" type="button" id="forgot-password" hidden>Forgot password?</button>

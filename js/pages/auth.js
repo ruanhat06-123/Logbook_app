@@ -248,7 +248,10 @@ const title = document.querySelector("#form-title"),
   nameFields = document.querySelector("#name-fields"),
   firstName = document.querySelector("#first-name"),
   surname = document.querySelector("#surname"),
-  forgotPassword = document.querySelector("#forgot-password");
+  forgotPassword = document.querySelector("#forgot-password"),
+  signupHumanCheck = document.querySelector("#signup-human-check"),
+  notARobot = document.querySelector("#not-a-robot"),
+  websiteTrap = document.querySelector("#website");
 if (new URLSearchParams(window.location.search).get("reason") === "session-expired") {
   notice.hidden = false;
   notice.textContent = "Your session expired. Sign in again to continue to checkout.";
@@ -287,6 +290,9 @@ const applyAuthMode = (isSignup) => {
   nameFields.hidden = !signup;
   firstName.required = signup;
   surname.required = signup;
+  signupHumanCheck.hidden = !signup;
+  notARobot.required = signup;
+  if (!signup) notARobot.checked = false;
   password.autocomplete = signup ? "new-password" : "current-password";
   passwordHelp.hidden = !signup;
   password.minLength = signup ? 8 : 1;
@@ -366,6 +372,15 @@ form.addEventListener("submit", async (event) => {
     notice.textContent =
       "Password must be at least 8 characters and include an uppercase letter, a lowercase letter, and a number.";
     password.focus();
+    button.disabled = false;
+    return;
+  }
+  if (signup && (websiteTrap.value || !notARobot.checked)) {
+    notice.hidden = false;
+    notice.textContent = websiteTrap.value
+      ? "Signup could not be verified. Please try again."
+      : "Please confirm that you are not a robot.";
+    if (!websiteTrap.value) notARobot.focus();
     button.disabled = false;
     return;
   }
