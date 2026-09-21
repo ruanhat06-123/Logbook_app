@@ -196,6 +196,7 @@ async function shell(active, content) {
   const banner = subscriptionBannerMarkup(subscriptionState);
 
   document.body.innerHTML = `<div class="app-shell"><aside class="sidebar"><div data-nav></div></aside><main class="main">${banner}${content}</main></div>`;
+  globalThis.LogMateUI?.finishLoading();
   renderNav(active, user, subscriptionState);
   setupCookieConsent();
 

@@ -19,12 +19,14 @@
     <meta name="twitter:image" content="https://logmate.co.za/assets/logo.svg" />
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; script-src 'self' https://esm.sh; connect-src 'self' https://*.supabase.co https://*.openrouteservice.org https://*.payfast.co.za; font-src 'self' data:; upgrade-insecure-requests; trusted-types default;" />
     <title>LogMate | Vehicle, fuel, and trip logbook</title>
+    <link rel="canonical" href="https://logmate.co.za/" />
     <link rel="icon" type="image/svg+xml" sizes="64x64" href="assets/logo.svg" />
     <link rel="apple-touch-icon" sizes="64x64" href="assets/logo.svg" />
     <link rel="manifest" href="manifest.json" />
     <link rel="alternate" hreflang="en" href="https://logmate.co.za/" />
     <link rel="stylesheet" href="bootstrap-5.3.8-dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="css/style.css" />
+    <script src="js/core/pageTransitions.js" defer></script>
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
@@ -44,8 +46,39 @@
             "publisher": {
               "@id": "https://logmate.co.za/#organization"
             }
+          },
+          {
+            "@type": "WebApplication",
+            "name": "LogMate",
+            "url": "https://logmate.co.za/",
+            "description": "Vehicle, fuel, trip, and service logbook for South African drivers and small fleets.",
+            "applicationCategory": "BusinessApplication",
+            "operatingSystem": "Web browser, Android, iOS",
+            "browserRequirements": "Requires JavaScript and a modern browser",
+            "inLanguage": "en-ZA",
+            "publisher": {
+              "@id": "https://logmate.co.za/#organization"
+            }
           }
         ]
+      }
+    </script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "LogMate",
+        "url": "https://logmate.co.za/",
+        "description": "Vehicle, fuel, trip, and service logbook for South African drivers and small fleets.",
+        "applicationCategory": "BusinessApplication",
+        "operatingSystem": "Web browser, Android, iOS",
+        "browserRequirements": "Requires JavaScript and a modern browser",
+        "inLanguage": "en-ZA",
+        "publisher": {
+          "@type": "Organization",
+          "name": "LogMate",
+          "url": "https://logmate.co.za/"
+        }
       }
     </script>
   </head>

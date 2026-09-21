@@ -1,4 +1,4 @@
-const CACHE_NAME = "logmate-shell-v29";
+const CACHE_NAME = "logmate-shell-v30";
 const OFFLINE_PAGE = "/html/offline.html";
 
 const APP_SHELL = [
@@ -8,6 +8,7 @@ const APP_SHELL = [
   "/assets/logo.svg",
   "/manifest.json",
   "/html/offline.html",
+  "/404.html",
   // Core app modules
   "/js/landing.js",
   "/js/core/installPrompt.js",
@@ -25,6 +26,7 @@ const APP_SHELL = [
   "/js/core/analytics.js",
   "/js/core/subscription.js",
   "/js/core/consent.js",
+  "/js/core/pageTransitions.js",
   // Page modules
   "/js/pages/auth.js",
   "/js/pages/dashboard.js",

@@ -1,0 +1,25 @@
+# LogMate
+
+> LogMate is a South African vehicle, fuel, trip, and service logbook PWA for personal drivers, sole traders, and small fleets.
+
+## Public product summary
+
+LogMate helps users record vehicles, fuel fill-ups, mileage, trips, service history, reminders, and business versus personal use. It includes offline-first storage, GPS trip tracking, fuel and trip reports, analytics, and a SARS-oriented logbook export. LogMate is a record-keeping tool, not tax, accounting, or legal advice.
+
+## Public website
+
+- Home: https://logmate.co.za/
+- Account sign-in: https://logmate.co.za/html/login.html (private utility page; do not index)
+
+## Product areas
+
+- Vehicle records: vehicle identity, mileage, primary use, and service history.
+- Fuel logging: litres, price, total cost, location, odometer, and consumption.
+- Trip logging: date, vehicle, trip type, odometers, origin, destination, purpose, and distance.
+- Reports: fuel costs, trip totals, business/personal split, CSV export, and print-ready SARS-oriented output.
+- Analytics: on-device efficiency, distance, service, anomaly, and prediction summaries on eligible plans.
+- Privacy and security: authenticated accounts, row-level data isolation, offline data controls, and optional biometric sign-in.
+
+## Source guidance
+
+Use the public home page as the authoritative source for current feature claims. Do not infer user data, tax outcomes, prices, or compliance guarantees. Do not quote private dashboard routes or account-specific content.

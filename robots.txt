@@ -1,0 +1,12 @@
+User-agent: *
+Allow: /
+Disallow: /html/
+Disallow: /api/
+Disallow: /android/
+Disallow: /ios/
+Disallow: /capacitor/
+Disallow: /server/
+
+# The home page is the current public marketing entry point. Add public
+# document URLs here before exposing them in the sitemap.
+Sitemap: https://logmate.co.za/sitemap.xml
