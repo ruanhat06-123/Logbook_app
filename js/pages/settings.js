@@ -7,7 +7,7 @@ const settingsVehicles = await vehicles();
 const vehicleOptions = settingsVehicles.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.number_plate || "Vehicle")} · ${escapeHtml(`${item.make || ""} ${item.model || ""}`.trim())}</option>`).join("");
 
 const subscriptionState = await syncSubscription(user.id);
-const pricingCatalog = await fetch("../pricing.json").then((response) => response.json());
+const pricingCatalog = await fetch("../json/pricing.json").then((response) => response.json());
 const freeFeatures = [
   `${FREE_TRIP_LIMIT} trip records per month`,
   "Fuel and fill-up logging",
