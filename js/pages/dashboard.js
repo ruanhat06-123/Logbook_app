@@ -1,7 +1,10 @@
 import "../core/app.js";
+import { getFleetContext, isFleetAdmin } from "../core/fleetAccess.js";
 
 const user = await requireAuth();
 if (!user) throw new Error("Not authenticated");
+const fleetContext = await getFleetContext(user);
+const fleetOwner = isFleetAdmin(fleetContext);
 
 const [vehicleRows, logRowsResp, tripRowsResp] = await Promise.all([
   vehicles(),
@@ -68,7 +71,7 @@ const dashboardWarning = loadWarnings.length
 await shell("home", `
   <header class="topbar dashboard-hero"><div><div class="eyebrow">${new Date().toLocaleDateString("en-GB", { weekday: "long", day: "2-digit", month: "long", year: "numeric" })}</div><h1>${escapeHtml(greeting)}.</h1><p class="dashboard-intro">Here is the latest activity across your vehicles.</p></div><div class="top-date"><strong>ACCOUNT OVERVIEW</strong>Updated just now</div></header>
   ${dashboardWarning}
-  <section class="dashboard-actions" aria-labelledby="dashboard-actions-title"><div><span class="eyebrow">Shortcuts</span><h2 id="dashboard-actions-title">What would you like to log?</h2></div><div class="dashboard-action-links"><a class="btn btn-primary" href="logbook.html">＋ Record fill-up</a><a class="btn btn-secondary" href="trip.html">↗ Log a trip</a><a class="dashboard-action-link" href="vehicles.html">View vehicles →</a></div></section>
+  ${fleetOwner ? "" : '<section class="dashboard-actions" aria-labelledby="dashboard-actions-title"><div><span class="eyebrow">Shortcuts</span><h2 id="dashboard-actions-title">What would you like to log?</h2></div><div class="dashboard-action-links"><a class="btn btn-primary" href="logbook.html">＋ Record fill-up</a><a class="btn btn-secondary" href="trip.html">↗ Log a trip</a><a class="dashboard-action-link" href="vehicles.html">View vehicles →</a></div></section>'}
   <section class="dashboard-summary" aria-label="Logbook summary">
     <div class="card stat stat-primary">
       <div class="stat-label">Distance logged</div>

@@ -250,8 +250,42 @@ const title = document.querySelector("#form-title"),
   surname = document.querySelector("#surname"),
   forgotPassword = document.querySelector("#forgot-password"),
   signupHumanCheck = document.querySelector("#signup-human-check"),
-  notARobot = document.querySelector("#not-a-robot"),
+  recaptchaWidget = document.querySelector("#recaptcha-widget"),
   websiteTrap = document.querySelector("#website");
+let recaptchaWidgetId = null;
+let recaptchaLoadPromise = null;
+
+const loadRecaptcha = () => {
+  if (window.grecaptcha?.render) return Promise.resolve(window.grecaptcha);
+  if (recaptchaLoadPromise) return recaptchaLoadPromise;
+  recaptchaLoadPromise = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://www.google.com/recaptcha/api.js?render=explicit";
+    script.async = true;
+    script.defer = true;
+    script.onload = () => {
+      const started = Date.now();
+      const waitForApi = () => {
+        if (window.grecaptcha?.render) return resolve(window.grecaptcha);
+        if (Date.now() - started > 10000) return reject(new Error("Human verification is unavailable."));
+        window.setTimeout(waitForApi, 50);
+      };
+      waitForApi();
+    };
+    script.onerror = () => reject(new Error("Human verification could not load. Check your connection."));
+    document.head.append(script);
+  });
+  return recaptchaLoadPromise;
+};
+
+const ensureRecaptcha = async () => {
+  if (recaptchaWidgetId !== null) return;
+  const api = await loadRecaptcha();
+  recaptchaWidgetId = api.render(recaptchaWidget, {
+    sitekey: "6LfQoMktAAAAAEbrMx8jnIHxQzI5NOOuO15m4r25",
+    theme: document.documentElement.dataset.theme === "dark" ? "dark" : "light",
+  });
+};
 if (new URLSearchParams(window.location.search).get("reason") === "session-expired") {
   notice.hidden = false;
   notice.textContent = "Your session expired. Sign in again to continue to checkout.";
@@ -291,8 +325,10 @@ const applyAuthMode = (isSignup) => {
   firstName.required = signup;
   surname.required = signup;
   signupHumanCheck.hidden = !signup;
-  notARobot.required = signup;
-  if (!signup) notARobot.checked = false;
+  if (signup) ensureRecaptcha().catch((error) => {
+    notice.hidden = false;
+    notice.textContent = error.message;
+  });
   password.autocomplete = signup ? "new-password" : "current-password";
   passwordHelp.hidden = !signup;
   password.minLength = signup ? 8 : 1;
@@ -375,12 +411,9 @@ form.addEventListener("submit", async (event) => {
     button.disabled = false;
     return;
   }
-  if (signup && (websiteTrap.value || !notARobot.checked)) {
+  if (signup && websiteTrap.value) {
     notice.hidden = false;
-    notice.textContent = websiteTrap.value
-      ? "Signup could not be verified. Please try again."
-      : "Please confirm that you are not a robot.";
-    if (!websiteTrap.value) notARobot.focus();
+    notice.textContent = "Signup could not be verified. Please try again.";
     button.disabled = false;
     return;
   }
@@ -408,6 +441,22 @@ form.addEventListener("submit", async (event) => {
   }
   let result;
   try {
+    if (signup) {
+      await ensureRecaptcha();
+      const recaptchaToken = window.grecaptcha.getResponse(recaptchaWidgetId);
+      if (!recaptchaToken) throw new Error("Please complete the ‘I’m not a robot’ check.");
+      const apiBase = String(window.__ENV?.VITE_API_URL || "").replace(/\/$/, "");
+      const verificationResponse = await fetch(`${apiBase}/api/recaptcha/verify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: recaptchaToken }),
+      });
+      const verification = await verificationResponse.json().catch(() => null);
+      if (!verificationResponse.ok || !verification?.success) {
+        window.grecaptcha.reset(recaptchaWidgetId);
+        throw new Error(verification?.error || "Human verification failed. Please try again.");
+      }
+    }
     result = signup
       ? await supabase.auth.signUp({
           email,
@@ -427,8 +476,7 @@ form.addEventListener("submit", async (event) => {
   } catch (error) {
     console.error("Authentication request failed", error);
     notice.hidden = false;
-    notice.textContent =
-      "Sign-in is temporarily unavailable. Check your internet connection and try again.";
+    notice.textContent = error.message || "Sign-in is temporarily unavailable. Check your internet connection and try again.";
     button.disabled = false;
     return;
   }

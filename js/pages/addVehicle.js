@@ -1,7 +1,9 @@
 import "../core/app.js";
+import { getFleetContext, isFleetAdmin } from "../core/fleetAccess.js";
 
 const user = await requireAuth();
 if (!user) throw new Error("Not authenticated");
+const fleetContext = await getFleetContext(user);
 
 await shell("add-vehicle", `
   <header class="topbar">
@@ -33,6 +35,7 @@ document.querySelector("#vehicle-form").addEventListener("submit", async (event)
   const form = event.target;
   const { error } = await supabase.from("vehicles").insert({
     user_id: user.id,
+    fleet_id: isFleetAdmin(fleetContext) ? fleetContext.fleetId : null,
     number_plate: form.plate.value.trim().toUpperCase(),
     make: form.make.value.trim(),
     model: form.model.value.trim(),

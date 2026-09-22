@@ -9,7 +9,7 @@ const crypto = require("crypto");
 const fetch = require("node-fetch"); // npm i node-fetch@2
 const { createClient } = require("@supabase/supabase-js"); // npm i @supabase/supabase-js
 const { getDmprFuelPrices } = require("./dmprFuelPrices");
-const pricingCatalog = require("../pricing.json");
+const pricingCatalog = require("../json/pricing.json");
 const app = express();
 app.disable("x-powered-by");
 const PRODUCTION_BASE_URL = "https://logmate.co.za";
@@ -29,7 +29,9 @@ app.use((req, res, next) => {
     "https://logmate.co.za"
   ]);
   const origin = req.headers.origin;
-  if (allowedOrigins.has(origin)) res.setHeader("Access-Control-Allow-Origin", origin);
+  if (allowedOrigins.has(origin) || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin || "")) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  }
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
   res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
@@ -47,10 +49,16 @@ app.use(express.json());
 // Supabase admin client (service role key — bypasses RLS, server-side only).
 // Required env: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
 // ---------------------------------------------------------------------------
-const supabaseAdmin =
-  process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
-    ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
-    : null;
+const serviceRoleKey = String(process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
+const serviceRolePlaceholder = "replace-with-your-service-role-key";
+const hasUsableServiceRoleKey = Boolean(
+  process.env.SUPABASE_URL &&
+    serviceRoleKey &&
+    serviceRoleKey !== serviceRolePlaceholder,
+);
+const supabaseAdmin = hasUsableServiceRoleKey
+  ? createClient(process.env.SUPABASE_URL, serviceRoleKey)
+  : null;
 
 const PLAN_PRICING = pricingCatalog.plans;
 const SARS_EXPORT_PRICE = Number(pricingCatalog.sarsExport?.price || 0);
@@ -59,13 +67,138 @@ const PAYFAST_VALIDATE_URL = process.env.PAYFAST_SANDBOX === "false"
   : "https://sandbox.payfast.co.za/eng/query/validate";
 
 async function getUserFromRequest(req) {
-  if (!supabaseAdmin) throw new Error("Supabase admin client not configured");
+  if (!supabaseAdmin) {
+    const error = new Error("Supabase admin client is not configured. Set SUPABASE_SERVICE_ROLE_KEY in the server .env file.");
+    error.statusCode = 503;
+    throw error;
+  }
   const token = (req.headers.authorization || "").replace(/^Bearer\s+/i, "");
-  if (!token) throw new Error("Missing Authorization bearer token");
+  if (!token) {
+    const error = new Error("Missing Authorization bearer token");
+    error.statusCode = 401;
+    throw error;
+  }
   const { data, error } = await supabaseAdmin.auth.getUser(token);
-  if (error || !data.user) throw new Error("Invalid or expired session");
+  if (error || !data.user) {
+    console.error("Bearer validation failed:", error?.message || "Supabase returned no user");
+    const authError = new Error("Invalid or expired session");
+    authError.statusCode = 401;
+    throw authError;
+  }
   return data.user;
 }
+
+async function getActiveFleetForOwner(ownerId) {
+  const { data: account, error: accountError } = await supabaseAdmin
+    .from("users")
+    .select("subscription_tier, subscription_expiry_date, payment_status")
+    .eq("id", ownerId)
+    .single();
+  if (accountError) throw accountError;
+  const fleetPlan = ["fleet_starter", "fleet_pro"].includes(account.subscription_tier);
+  const expired = account.subscription_expiry_date && new Date(`${account.subscription_expiry_date}T23:59:59Z`) < new Date();
+  if (!fleetPlan || (account.payment_status !== "active" && expired)) return null;
+  const { data: fleet, error: fleetError } = await supabaseAdmin
+    .from("fleets")
+    .select("id, vehicle_limit")
+    .eq("owner_id", ownerId)
+    .single();
+  if (fleetError) throw fleetError;
+  return fleet;
+}
+
+app.post("/api/recaptcha/verify", async (req, res) => {
+  const token = String(req.body?.token || "").trim();
+  const secret = process.env.RECAPTCHA_SECRET_KEY;
+  if (!secret) return res.status(503).json({ success: false, error: "reCAPTCHA is not configured on the server" });
+  if (!token) return res.status(400).json({ success: false, error: "Missing reCAPTCHA token" });
+
+  try {
+    const response = await fetch("https://www.google.com/recaptcha/api/siteverify", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ secret, response: token, remoteip: req.ip }).toString(),
+    });
+    const result = await response.json();
+    if (!response.ok || !result.success) return res.status(400).json({ success: false, error: "Human verification failed" });
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("reCAPTCHA verification failed:", error);
+    return res.status(502).json({ success: false, error: "Human verification service is unavailable" });
+  }
+});
+
+app.post("/api/fleet/drivers", async (req, res) => {
+  try {
+    const owner = await getUserFromRequest(req);
+    const { firstName, lastName, email, password, status = "active" } = req.body || {};
+    if (!firstName || !lastName || !email || !password) return res.status(400).json({ error: "First name, last name, email, and password are required" });
+    if (!["active", "suspended"].includes(status)) return res.status(400).json({ error: "Invalid driver status" });
+
+    const fleet = await getActiveFleetForOwner(owner.id);
+    if (!fleet) return res.status(403).json({ error: "An active fleet subscription is required to add drivers" });
+    const { count, error: countError } = await supabaseAdmin.from("fleet_drivers").select("id", { count: "exact", head: true }).eq("fleet_id", fleet.id);
+    if (countError) throw countError;
+    const driverLimit = Number(fleet.vehicle_limit || 0) * 2;
+    if ((count || 0) >= driverLimit) return res.status(409).json({ error: `This fleet has reached its ${driverLimit}-driver limit` });
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+      email: normalizedEmail,
+      password,
+      email_confirm: true,
+      user_metadata: { first_name: firstName.trim(), surname: lastName.trim(), full_name: `${firstName.trim()} ${lastName.trim()}` },
+    });
+    if (authError) return res.status(400).json({ error: authError.message });
+    const { data: driver, error: driverError } = await supabaseAdmin.from("fleet_drivers").insert({ fleet_id: fleet.id, user_id: authData.user.id, first_name: firstName.trim(), last_name: lastName.trim(), email: normalizedEmail, status }).select().single();
+    if (driverError) {
+      await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
+      throw driverError;
+    }
+    return res.status(201).json({ driver });
+  } catch (error) {
+    console.error("Create fleet driver failed:", error);
+    return res.status(error.statusCode || 500).json({ error: error.message || "Unable to create fleet driver" });
+  }
+});
+
+app.patch("/api/fleet/drivers/:driverId", async (req, res) => {
+  try {
+    const owner = await getUserFromRequest(req);
+    const { firstName, lastName, email, password, status } = req.body || {};
+    if (!firstName || !lastName || !email || !["active", "suspended"].includes(status)) {
+      return res.status(400).json({ error: "First name, last name, email, and status are required" });
+    }
+    const fleet = await getActiveFleetForOwner(owner.id);
+    if (!fleet) return res.status(403).json({ error: "An active fleet subscription is required to edit drivers" });
+
+    const { data: driver, error: driverError } = await supabaseAdmin
+      .from("fleet_drivers")
+      .select("id, user_id")
+      .eq("id", req.params.driverId)
+      .eq("fleet_id", fleet.id)
+      .single();
+    if (driverError || !driver) return res.status(404).json({ error: "Driver was not found in your fleet" });
+
+    const authUpdate = { email: email.trim().toLowerCase(), user_metadata: { first_name: firstName.trim(), surname: lastName.trim(), full_name: `${firstName.trim()} ${lastName.trim()}` } };
+    if (password?.trim()) authUpdate.password = password.trim();
+    const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(driver.user_id, authUpdate);
+    if (authError) return res.status(400).json({ error: authError.message });
+
+    const { data: updated, error: updateError } = await supabaseAdmin
+      .from("fleet_drivers")
+      .update({ first_name: firstName.trim(), last_name: lastName.trim(), email: email.trim().toLowerCase(), status })
+      .eq("id", driver.id)
+      .eq("fleet_id", fleet.id)
+      .select("id, first_name, last_name, email, status, created_at")
+      .single();
+    if (updateError) return res.status(400).json({ error: updateError.message });
+    return res.json({ driver: updated });
+  } catch (error) {
+    console.error("Update fleet driver failed:", error);
+    return res.status(error.statusCode || 500).json({ error: error.message || "Unable to update fleet driver" });
+  }
+});
 
 /** Apply a successful payment to a user's subscription row. */
 async function applySuccessfulPayment({ userId, tier, billingCycle, amount }) {
@@ -350,6 +483,9 @@ app.post("/api/webhooks/payfast", express.urlencoded({ extended: false }), async
 });
 
 if (require.main === module) {
+  if (!hasUsableServiceRoleKey) {
+    console.error("SUPABASE_SERVICE_ROLE_KEY is missing or still uses the placeholder value.");
+  }
   app.listen(PORT, () =>
     console.log(`API proxy listening on http://localhost:${PORT}`),
   );

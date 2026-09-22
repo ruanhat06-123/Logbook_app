@@ -98,7 +98,7 @@ if (!isFleetTier(subscriptionState)) {
     </section>
     ${
       vehiclesDue.length
-        ? `<section class="card"><div class="card-head"><h2>Service due soon</h2></div><p class="row-sub">${vehiclesDue.length} vehicle${vehiclesDue.length === 1 ? "" : "s"} within 1,000 km of the next service. Review from <a href="vehicles.html">My vehicles</a>.</p></section>`
+        ? `<section class="card"><div class="card-head"><h2>Service due soon</h2></div><p class="row-sub">${vehiclesDue.length} vehicle${vehiclesDue.length === 1 ? "" : "s"} within 1,000 km of the next service. Review from <a href="vehicles.html">Fleet vehicles</a>.</p></section>`
         : ""
     }
     <section class="card">

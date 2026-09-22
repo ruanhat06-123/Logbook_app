@@ -6,7 +6,7 @@
     <meta name="description" content="Sign in to LogMate to review your vehicle mileage, fuel records, trip log, and service reminders securely." />
     <meta name="robots" content="noindex, nofollow, noarchive" />
     <meta name="theme-color" content="#0b3d52" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; script-src 'self' https://esm.sh; connect-src 'self' https://*.supabase.co https://*.openrouteservice.org https://*.payfast.co.za; font-src 'self' data:; upgrade-insecure-requests; trusted-types default;" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; script-src 'self' https://esm.sh https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/; frame-src 'self' https://www.google.com/recaptcha/; connect-src 'self' http://localhost:3000 https://logmate.co.za https://*.supabase.co https://*.openrouteservice.org https://*.payfast.co.za; font-src 'self' data:; upgrade-insecure-requests; trusted-types default;" />
     <title>Log in | LogMate</title>
     <link rel="icon" type="image/svg+xml" href="../assets/logo.svg" />
     <link rel="manifest" href="../manifest.json" />
@@ -56,9 +56,8 @@
               </div>
               <small id="password-help" class="field-help" hidden>Use at least 8 characters, including an uppercase letter, a lowercase letter, and a number.</small>
             </div>
-            <div class="signup-human-check form-check mb-3" id="signup-human-check" hidden>
-              <input class="form-check-input" id="not-a-robot" type="checkbox" required />
-              <label class="form-check-label" for="not-a-robot">I’m not a robot</label>
+            <div class="signup-human-check mb-3" id="signup-human-check" hidden>
+              <div id="recaptcha-widget" aria-label="Human verification"></div>
             </div>
             <input id="website" name="website" class="visually-hidden" type="text" tabindex="-1" autocomplete="off" aria-hidden="true" />
             <button class="btn btn-primary" type="submit" id="submit-button">Sign in →</button>
@@ -72,6 +71,7 @@
         </div>
       </section>
     </main>
+    <script src="../js/core/env.js"></script>
     <script src="../bootstrap-5.3.8-dist/js/bootstrap.bundle.min.js"></script>
     <script type="module" src="../js/pages/auth.js"></script>
   </body>

@@ -1,4 +1,4 @@
-const CACHE_NAME = "logmate-shell-v30";
+const CACHE_NAME = "logmate-shell-v33";
 const OFFLINE_PAGE = "/html/offline.html";
 
 const APP_SHELL = [
@@ -25,6 +25,7 @@ const APP_SHELL = [
   "/js/core/reportCache.js",
   "/js/core/analytics.js",
   "/js/core/subscription.js",
+  "/js/core/fleetAccess.js",
   "/js/core/consent.js",
   "/js/core/pageTransitions.js",
   // Page modules
@@ -43,6 +44,7 @@ const APP_SHELL = [
   "/js/pages/vehicleList.js",
   "/js/pages/analytics.js",
   "/js/pages/fleet.js",
+  "/js/pages/drivers.js",
   // HTML pages for offline access
   "/html/login.html",
   "/html/dashboard.html",
@@ -58,6 +60,7 @@ const APP_SHELL = [
   "/html/analytics.html",
   "/html/reset-password.html",
   "/html/fleet.html",
+  "/html/drivers.html",
 ];
 
 self.addEventListener("install", (event) => {

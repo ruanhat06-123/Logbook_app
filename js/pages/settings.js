@@ -1,8 +1,11 @@
 import "../core/app.js";
 import { setupTermsConsent } from "../core/consent.js";
+import { getFleetContext, isFleetDriver } from "../core/fleetAccess.js";
 
 const user = await requireAuth();
 if (!user) throw new Error("Not authenticated");
+const fleetContext = await getFleetContext(user);
+const driverView = isFleetDriver(fleetContext);
 const settingsVehicles = await vehicles();
 const vehicleOptions = settingsVehicles.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.number_plate || "Vehicle")} · ${escapeHtml(`${item.make || ""} ${item.model || ""}`.trim())}</option>`).join("");
 
@@ -48,7 +51,7 @@ await shell("settings", `
   </header>
   <nav class="settings-category-nav" aria-label="Settings categories">
     <button class="btn btn-secondary" type="button" data-settings-category="account" aria-selected="true">Account</button>
-    <button class="btn btn-secondary" type="button" data-settings-category="billing" aria-selected="false">Billing</button>
+    ${driverView ? "" : '<button class="btn btn-secondary" type="button" data-settings-category="billing" aria-selected="false">Billing</button>'}
     <button class="btn btn-secondary" type="button" data-settings-category="appearance" aria-selected="false">Appearance</button>
     <button class="btn btn-secondary" type="button" data-settings-category="activity" aria-selected="false">Trips &amp; analytics</button>
     <button class="btn btn-secondary" type="button" data-settings-category="security" aria-selected="false">Security</button>
@@ -77,7 +80,7 @@ await shell("settings", `
       </form>
       <div id="password-notice" class="notice" hidden></div>
     </section>
-    <section class="card" id="billing" data-settings-section="billing">
+    ${driverView ? "" : `<section class="card" id="billing" data-settings-section="billing">
       <div class="card-head"><h2>Subscription &amp; billing</h2></div>
       <p class="row-sub">Current plan: <strong>${escapeHtml(tierLabel(subscriptionState))}</strong> · Payment status: <strong>${escapeHtml(subscriptionState.paymentStatus)}</strong>${subscriptionState.expiryDate ? ` · Renews/expires ${escapeHtml(dateText(subscriptionState.expiryDate))}` : ""}</p>
       <div class="billing-current-summary">
@@ -87,7 +90,7 @@ await shell("settings", `
       <p class="row-sub">Choose a plan below to compare exactly what it includes. Premium and Fleet include SARS PDF exports; Free users can buy one for R${Number(pricingCatalog.sarsExport?.price || 99).toFixed(0)}.</p>
       <div class="billing-plan-grid">${planButtons}</div>
       <div id="billing-notice" class="notice" hidden></div>
-    </section>
+    </section>`}
     <section class="card" data-settings-section="appearance">
       <div class="card-head"><h2>Appearance</h2></div>
       <p class="row-sub">Choose the color theme used across your logbook.</p>
@@ -185,7 +188,7 @@ setupTermsConsent();
 const settingsCategoryButtons = [...document.querySelectorAll("[data-settings-category]")];
 const settingsSections = [...document.querySelectorAll("[data-settings-section]")];
 const settingsSearch = document.querySelector("#settings-search");
-let activeSettingsCategory = window.location.hash === "#billing"
+let activeSettingsCategory = !driverView && window.location.hash === "#billing"
   ? "billing"
   : localStorage.getItem("settingsCategory") || "account";
 

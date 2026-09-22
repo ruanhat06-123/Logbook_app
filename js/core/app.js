@@ -3,6 +3,7 @@ import { supabase } from "./supabaseClient.js";
 import { initializeOfflineDetection } from "./offlineIndicator.js";
 import "./serviceReminder.js";
 import { setupCookieConsent } from "./consent.js";
+import { auditIdentity, getFleetContext, isFleetAdmin, isFleetDriver } from "./fleetAccess.js";
 import {
   getSubscriptionState,
   syncSubscription,
@@ -173,7 +174,7 @@ const enhanceBootstrapUI = () => {
 /**
  * Render the left navigation and user info
  */
-function renderNav(active, user, subscriptionState) {
+function renderNav(active, user, subscriptionState, fleetContext) {
   const nav = document.querySelector("[data-nav]");
   if (!nav) return;
   const metadata = user?.user_metadata || {},
@@ -192,11 +193,15 @@ function renderNav(active, user, subscriptionState) {
 
   const navLink = (key, href, icon, label) =>
     `<a class="nav-link ${active === key ? "active" : ""}" href="${href}"${active === key ? ' aria-current="page"' : ""}><span class="nav-icon" aria-hidden="true">${icon}</span>${label}</a>`;
-  const fleetLink = isFleetTier(subscriptionState)
+  const driverNav = isFleetDriver(fleetContext);
+  const fleetOwnerNav = isFleetAdmin(fleetContext);
+  const vehicleNavLabel = driverNav || fleetOwnerNav ? "Fleet vehicles" : "My vehicles";
+  const fleetLink = !driverNav && isFleetTier(subscriptionState)
     ? navLink("fleet", "fleet.html", "⚑", "Fleet")
     : "";
-
-  nav.innerHTML = `<div class="brand navbar-brand"><img class="brand-mark" src="../assets/logo.svg" alt="" /> LogMate</div><div class="nav-label">Workspace</div><nav class="nav nav-pills flex-column" aria-label="Main navigation">${navLink("home", "dashboard.html", "⌂", "Overview")}${navLink("vehicles", "vehicles.html", "▣", "My vehicles")}${navLink("logbook", "logbook.html", "＋", "New fill-up")}${navLink("trip", "trip.html", "↗", "New trip")}${navLink("report", "report.html", "▤", "Fuel reports")}${navLink("trip-report", "trip-report.html", "◫", "Trip reports")}${navLink("analytics", "analytics.html", "∿", "Analytics")}${fleetLink}${navLink("help", "help.html", "?", "Help")}</nav><a class="nav-settings nav-link ${active === "settings" ? "active" : ""}" href="settings.html"${active === "settings" ? ' aria-current="page"' : ""} aria-label="Settings" title="Settings"><span class="nav-icon" aria-hidden="true">⚙</span><span>Settings</span></a><div class="sidebar-footer"><div class="user-chip"><span class="avatar">${escapeHtml(initials)}</span><div><div class="user-name">${escapeHtml(displayName)}</div><div class="user-role">${escapeHtml(tierLabel(subscriptionState))} account</div></div></div><button class="signout" data-signout>Sign out →</button></div>`;
+  const driverLinks = `${navLink("home", "dashboard.html", "⌂", "Dashboard")}${navLink("logbook", "logbook.html", "＋", "Fuel logs")}${navLink("trip", "trip.html", "↗", "Trip logs")}${navLink("settings", "settings.html", "⚙", "Settings")}`;
+  const adminLinks = `${navLink("home", "dashboard.html", "⌂", "Overview")}${navLink("vehicles", "vehicles.html", "▣", vehicleNavLabel)}${fleetOwnerNav ? "" : navLink("logbook", "logbook.html", "＋", "New fill-up")}${fleetOwnerNav ? "" : navLink("trip", "trip.html", "↗", "New trip")}${navLink("report", "report.html", "▤", "Fuel reports")}${navLink("trip-report", "trip-report.html", "◫", "Trip reports")}${navLink("analytics", "analytics.html", "∿", "Analytics")}${fleetOwnerNav ? navLink("drivers", "drivers.html", "♙", "Drivers") : ""}${fleetLink}${navLink("help", "help.html", "?", "Help")}`;
+  nav.innerHTML = `<div class="brand navbar-brand"><img class="brand-mark" src="../assets/logo.svg" alt="" /> LogMate</div><div class="nav-label">Workspace</div><nav class="nav nav-pills flex-column" aria-label="Main navigation">${driverNav ? driverLinks : adminLinks}</nav>${driverNav ? "" : `<a class="nav-settings nav-link ${active === "settings" ? "active" : ""}" href="settings.html"${active === "settings" ? ' aria-current="page"' : ""} aria-label="Settings" title="Settings"><span class="nav-icon" aria-hidden="true">⚙</span><span>Settings</span></a>`}<div class="sidebar-footer"><div class="user-chip"><span class="avatar">${escapeHtml(initials)}</span><div><div class="user-name">${escapeHtml(displayName)}</div><div class="user-role">${escapeHtml(driverNav ? "Fleet driver" : tierLabel(subscriptionState))} account</div></div></div><button class="signout" data-signout>Sign out →</button></div>`;
   nav.querySelector(".user-role")?.classList.add("badge", "text-bg-secondary");
 }
 
@@ -219,12 +224,20 @@ async function shell(active, content) {
   const user = await requireAuth();
   if (!user) return null;
 
+  const fleetContext = await getFleetContext(user);
+  const driverAllowedPages = new Set(["home", "logbook", "trip", "settings"]);
+  if (isFleetDriver(fleetContext) && !driverAllowedPages.has(active)) {
+    content = `<section class="card"><div class="card-head"><h2>Page unavailable</h2></div><p class="row-sub">Fleet drivers can access the dashboard, assigned-vehicle fuel logs, trip logs, and Settings.</p></section>`;
+  }
+  if (isFleetAdmin(fleetContext) && ["logbook", "trip"].includes(active)) {
+    content = `<section class="card"><div class="card-head"><h2>Fleet owner access</h2></div><p class="row-sub">Fleet owners manage drivers and vehicles. Active fleet drivers record trips and fuel logs.</p><a class="btn btn-primary" href="drivers.html">Open Drivers</a></section>`;
+  }
   const subscriptionState = await getSubscriptionState(user.id);
-  const banner = subscriptionBannerMarkup(subscriptionState);
+  const banner = isFleetDriver(fleetContext) ? "" : subscriptionBannerMarkup(subscriptionState);
 
   document.body.innerHTML = `<div class="app-shell"><aside class="sidebar navbar navbar-dark"><div data-nav></div></aside><main class="main container-fluid">${banner}${content}</main></div>`;
   globalThis.LogMateUI?.finishLoading();
-  renderNav(active, user, subscriptionState);
+  renderNav(active, user, subscriptionState, fleetContext);
   enhanceBootstrapUI();
   const bootstrapObserver = new MutationObserver(enhanceBootstrapUI);
   bootstrapObserver.observe(document.querySelector(".main"), { childList: true, subtree: true });
@@ -295,6 +308,9 @@ Object.assign(globalThis, {
   isFleetTier,
   canExportSarsPdf,
   isFreeTripLimitReached,
+  getFleetContext,
+  isFleetDriver,
+  auditIdentity,
   tierLabel,
   FREE_TRIP_LIMIT,
   statusMarkup,

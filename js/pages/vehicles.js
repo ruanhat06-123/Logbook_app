@@ -1,9 +1,12 @@
 // vehicles.js
 import "../core/app.js";
+import { getFleetContext, isFleetAdmin } from "../core/fleetAccess.js";
 import { notifyServiceDue, requestServiceNotifications, restorePendingServiceReminders, serviceReminderMarkup } from "../core/serviceReminder.js";
 
 const user = await requireAuth();
 if (!user) throw new Error("Not authenticated");
+const fleetContext = await getFleetContext(user);
+const fleetOwner = isFleetAdmin(fleetContext);
 
 if (user) {
   // Use the shared vehicles() helper which now attaches latest_logbook_mileage
@@ -39,7 +42,7 @@ if (user) {
 
         const latestLogbookMileage = Number.isFinite(Number(item.latest_logbook_mileage)) ? Number(item.latest_logbook_mileage) : "";
 
-        // Two action buttons: Fill-up and Log trip
+        // Logging actions are hidden for fleet owners.
         return `<div class="vehicle-row" data-vehicle-id="${escapeHtml(item.id)}">
           <div class="car-icon">⌁</div>
           <div class="row-main">
@@ -48,8 +51,8 @@ if (user) {
             <div class="row-sub">Latest logbook mileage: ${latestLogbookMileage === "" ? "—" : `${latestLogbookMileage.toLocaleString()} km`}</div>
           </div>
           <div class="row-actions">
-            <button class="btn btn-small" type="button" data-fillup="${escapeHtml(item.id)}" title="Record fill-up for ${escapeHtml(item.number_plate || "")}">＋ Fill-up</button>
-            <button class="btn btn-small" type="button" data-log-trip="${escapeHtml(item.id)}" title="Log trip for ${escapeHtml(item.number_plate || "")}">↗ Trip</button>
+            ${fleetOwner ? "" : `<button class="btn btn-small" type="button" data-fillup="${escapeHtml(item.id)}" title="Record fill-up for ${escapeHtml(item.number_plate || "")}">＋ Fill-up</button>
+            <button class="btn btn-small" type="button" data-log-trip="${escapeHtml(item.id)}" title="Log trip for ${escapeHtml(item.number_plate || "")}">↗ Trip</button>`}
             <button class="icon-button" type="button" data-edit-vehicle="${escapeHtml(item.id)}" aria-label="Edit ${escapeHtml(item.number_plate || "")}" title="Edit vehicle">✎</button>
             <button class="icon-button" type="button" data-delete-vehicle="${escapeHtml(item.id)}" aria-label="Remove ${escapeHtml(item.number_plate || "")}" title="Remove vehicle">×</button>
           </div>
@@ -113,7 +116,7 @@ if (user) {
 
     <section class="grid two-col">
       <div class="card" id="vehicles">
-        <div class="card-head"><h2>Your vehicles</h2><span><a class="text-link" href="logbook.html">＋ Fill-up</a> <a class="text-link" href="trip.html">↗ Trip</a></span></div>
+        <div class="card-head"><h2>${fleetOwner ? "Fleet vehicles" : "Your vehicles"}</h2>${fleetOwner ? "" : '<span><a class="text-link" href="logbook.html">＋ Fill-up</a> <a class="text-link" href="trip.html">↗ Trip</a></span>'}</div>
         ${vehicleMarkup}
       </div>
 

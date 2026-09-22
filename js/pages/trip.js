@@ -20,9 +20,15 @@ import {
 import { initializeTripUI } from "../core/tripUIIntegration.js";
 import { initializeOfflineSync } from "../core/offlineSync.js";
 import { getLocalStore, setLocalStore } from "../core/localStore.js";
+import { auditIdentity, getFleetContext, isFleetAdmin } from "../core/fleetAccess.js";
 
 const user = await requireAuth();
 if (!user) throw new Error("Not authenticated");
+const fleetContext = await getFleetContext(user);
+if (isFleetAdmin(fleetContext)) {
+  window.location.replace("drivers.html");
+  throw new Error("Fleet owners cannot log trips");
+}
 
 if (user) {
   // ---------- Logging helpers ----------
@@ -236,6 +242,16 @@ if (user) {
           <input id="date" type="date" required>
         </div>
 
+          <div class="field">
+            <label for="start-time">Start time</label>
+            <input id="start-time" type="time" required>
+          </div>
+
+          <div class="field">
+            <label for="end-time">End time</label>
+            <input id="end-time" type="time" required>
+          </div>
+
         <div class="field">
           <label for="start-odo">Start odometer (km)</label>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -390,6 +406,16 @@ if (user) {
   let destWasDetectedByGeolocation = false;
   let editingTripId = null;
 
+  function renderPreviousTripsForVehicle(vehicleId) {
+    const matchingTrips = vehicleId
+      ? previousTrips.filter((trip) => String(trip.vehicle_id) === String(vehicleId))
+      : [];
+    previousTripSelect.innerHTML = `<option value="">${matchingTrips.length ? "New trip or edit a previous trip" : "Select a vehicle to edit a previous trip"}</option>${matchingTrips.map((item) => {
+      const date = item.created_at ? new Date(item.created_at).toLocaleDateString("en-GB") : "No date";
+      return `<option value="${escapeHtml(item.id)}">${escapeHtml(date)} · ${escapeHtml(item.trip_origin || "Origin not specified")} to ${escapeHtml(item.trip_destination || "Destination not specified")}</option>`;
+    }).join("")}`;
+  }
+
   function resetTripForm() {
     editingTripId = null;
     document.querySelector("#trip-form").reset();
@@ -478,6 +504,7 @@ if (user) {
   }
 
   vehicleSelect.addEventListener("change", async () => {
+    renderPreviousTripsForVehicle(vehicleSelect.value);
     await populateStartOdometer(vehicleSelect.value);
   });
   const requestedVehicle = new URLSearchParams(window.location.search).get("vehicle");
@@ -486,6 +513,7 @@ if (user) {
   if (preferredVehicle && vehicleSelect.querySelector(`option[value="${preferredVehicle}"]`)) {
     vehicleSelect.value = preferredVehicle;
   }
+  renderPreviousTripsForVehicle(vehicleSelect.value);
   if (vehicleSelect.value) setTimeout(() => populateStartOdometer(vehicleSelect.value), 0);
 
   // ---------- Purpose other ----------
@@ -1397,6 +1425,8 @@ if (user) {
       const vehicleId = vehicleSelect.value;
       const tripType = document.querySelector("#trip-type").value;
       const date = dateInput.value;
+      const startTime = document.querySelector("#start-time").value;
+      const endTime = document.querySelector("#end-time").value;
       const startOdo = Number(startOdoInput.value);
       const endOdo = Number(endOdoInput.value);
       const origin = originInput.value.trim();
@@ -1408,6 +1438,7 @@ if (user) {
       if (!origin) return window.alert("Please enter an origin.");
       if (!destination) return window.alert("Please enter a destination.");
       if (!purpose) return window.alert("Please select a purpose.");
+      if (!startTime || !endTime) return window.alert("Please enter the trip start and end times.");
       if (purpose === "other" && !purposeOther)
         return window.alert(
           "Please describe the purpose when 'Other' is selected.",
@@ -1434,12 +1465,16 @@ if (user) {
 
       try {
         const tripValues = {
+          ...auditIdentity(user, fleetContext),
+          fleet_id: fleetContext.fleetId,
             vehicle_id: vehicleId,
             trip_type: tripType,
             mileage_start: startOdo,
             mileage_end: endOdo,
             trip_distance_km: tripDistance,
-            created_at: new Date(date),
+            created_at: new Date(`${date}T${startTime}`),
+            trip_start_time: startTime,
+            trip_end_time: endTime,
             trip_origin: origin,
             trip_destination: destination,
             trip_purpose: tripPurposeToStore,

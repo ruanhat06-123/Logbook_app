@@ -5,9 +5,17 @@ import {
   restorePendingServiceReminders,
   serviceReminderMarkup,
 } from "../core/serviceReminder.js";
+import { getFleetContext, isFleetDriver } from "../core/fleetAccess.js";
 
 const user = await requireAuth();
 if (!user) throw new Error("Not authenticated");
+const fleetContext = await getFleetContext(user);
+const driverView = isFleetDriver(fleetContext);
+const fleetOwner = isFleetAdmin(fleetContext);
+if (driverView) {
+  window.location.replace("dashboard.html");
+  throw new Error("Fleet drivers do not have access to the vehicle list");
+}
 
 const currentVehicles = (await vehicles()) || [];
 const { data: serviceRows = [] } = await supabase
@@ -39,11 +47,11 @@ const vehicleMarkup = currentVehicles.length
           <div class="vehicle-detail"><span>Next service</span><strong>${item.next_service_mileage ? `${nextService.toLocaleString()} km` : "Not entered"}</strong><small class="${remaining !== null && remaining <= 0 ? "service-overdue" : ""}">${escapeHtml(distanceLabel)}</small></div>
         </div>
         <div class="row-actions vehicle-actions">
-          <a class="btn btn-small" href="logbook.html?vehicle=${encodeURIComponent(item.id)}">＋ Fill-up</a>
-          <a class="btn btn-small" href="trip.html?vehicle=${encodeURIComponent(item.id)}">↗ Trip</a>
-          <button class="btn btn-small" type="button" data-service-history="${escapeHtml(item.id)}">Service history</button>
+          ${fleetOwner ? "" : `<a class="btn btn-small" href="logbook.html?vehicle=${encodeURIComponent(item.id)}">＋ Fill-up</a>
+          <a class="btn btn-small" href="trip.html?vehicle=${encodeURIComponent(item.id)}">↗ Trip</a>`}
+          ${driverView ? "" : `<button class="btn btn-small" type="button" data-service-history="${escapeHtml(item.id)}">Service history</button>
           <button class="icon-button" type="button" data-edit-vehicle="${escapeHtml(item.id)}" aria-label="Edit ${escapeHtml(item.number_plate || "")}" title="Edit vehicle">✎</button>
-          <button class="icon-button" type="button" data-delete-vehicle="${escapeHtml(item.id)}" aria-label="Remove ${escapeHtml(item.number_plate || "")}" title="Remove vehicle">×</button>
+          <button class="icon-button" type="button" data-delete-vehicle="${escapeHtml(item.id)}" aria-label="Remove ${escapeHtml(item.number_plate || "")}" title="Remove vehicle">×</button>`}
         </div>
       </article>`;
     }).join("")
@@ -51,12 +59,12 @@ const vehicleMarkup = currentVehicles.length
 
 await shell("vehicles", `
   <header class="topbar">
-    <div><div class="eyebrow">Vehicle management</div><h1>Your vehicles.</h1></div>
+    <div><div class="eyebrow">Vehicle management</div><h1>${fleetOwner ? "Fleet vehicles." : "Your vehicles."}</h1></div>
     <div class="top-date"><strong>VEHICLE LIST</strong>${currentVehicles.length} active vehicle${currentVehicles.length === 1 ? "" : "s"}</div>
   </header>
   ${currentVehicles.map(serviceReminderMarkup).join("")}
   <section class="card" id="vehicles">
-    <div class="card-head"><h2>Vehicles</h2><a class="btn btn-primary" href="add-vehicle.html">Add vehicle →</a></div>
+    <div class="card-head"><h2>Vehicles</h2>${driverView ? "" : '<a class="btn btn-primary" href="add-vehicle.html">Add vehicle →</a>'}</div>
     ${vehicleMarkup}
   </section>
 `);

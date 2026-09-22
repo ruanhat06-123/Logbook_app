@@ -7,9 +7,15 @@ import {
   serviceReminderMarkup,
 } from "../core/serviceReminder.js";
 import { getRegionalFuelPrice, detectCountryCode } from "../core/fuelPrice.js";
+import { auditIdentity, getFleetContext, isFleetAdmin } from "../core/fleetAccess.js";
 
 const user = await requireAuth();
 if (!user) throw new Error("Not authenticated");
+const fleetContext = await getFleetContext(user);
+if (isFleetAdmin(fleetContext)) {
+  window.location.replace("drivers.html");
+  throw new Error("Fleet owners cannot log fuel entries");
+}
 
 if (user) {
   // Fetch vehicles list
@@ -523,6 +529,8 @@ if (user) {
         const { data: insertData, error: insertErr } = await supabase
           .from("car_logbook")
           .insert({
+            ...auditIdentity(user, fleetContext),
+            fleet_id: fleetContext.fleetId,
             vehicle_id: vehicleId,
             entry_type: "refuel",
             mileage_last_fill: mileageLastFill,
