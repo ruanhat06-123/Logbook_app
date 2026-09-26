@@ -1,6 +1,7 @@
 import "../core/app.js";
 import { setupTermsConsent } from "../core/consent.js";
 import { getFleetContext, isFleetDriver } from "../core/fleetAccess.js";
+import { isDataBudgetModeEnabled, setDataBudgetMode } from "../core/dataBudget.js";
 
 const user = await requireAuth();
 if (!user) throw new Error("Not authenticated");
@@ -165,6 +166,7 @@ await shell("settings", `
     <section class="card" data-settings-section="data">
       <div class="card-head"><h2>Offline data</h2></div>
       <p class="row-sub">LogMate stores trip coordinates and cached data on this device so you can work offline. Clear it if you're switching accounts or want to free up space.</p>
+      <label class="setting-check"><input id="data-budget-mode" type="checkbox"> Data budgeting mode <small class="row-sub" style="display:block;margin-top:4px">Pause map searches, route lookups, reverse geocoding, and invoice uploads until Wi-Fi or Ethernet is available.</small></label>
       <div class="form-actions" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
         <button id="clear-offline-data" class="btn btn-secondary" type="button">Clear offline data</button>
       </div>
@@ -231,6 +233,10 @@ settingsCategoryButtons.forEach((button) => {
   });
 });
 showSettingsCategory(activeSettingsCategory);
+
+const dataBudgetMode = document.querySelector("#data-budget-mode");
+dataBudgetMode.checked = isDataBudgetModeEnabled();
+dataBudgetMode.addEventListener("change", () => setDataBudgetMode(dataBudgetMode.checked));
 
 const settingsThemeToggle = document.querySelector("#settings-theme-toggle");
 const updateThemeLabel = () => {
@@ -571,13 +577,13 @@ async function startCheckout({ tier, cycle, button }) {
     if (response.status === 401) {
       const refreshed = await supabase.auth.refreshSession();
       if (!refreshed.data.session?.access_token) {
-        window.location.href = "login.html";
+        globalThis.LogMateUI?.navigateTo("app.html?page=login", { replace: true });
         return;
       }
       response = await requestCheckout(refreshed.data.session.access_token);
       if (response.status === 401) {
         await supabase.auth.signOut();
-        window.location.href = "login.html?reason=session-expired";
+        globalThis.LogMateUI?.navigateTo("app.html?page=login&reason=session-expired", { replace: true });
         return;
       }
     }
@@ -585,7 +591,7 @@ async function startCheckout({ tier, cycle, button }) {
     if (!response.ok || !result.checkoutUrl) {
       throw new Error(result.error || "Checkout could not be started.");
     }
-    window.location.href = result.checkoutUrl;
+    globalThis.LogMateUI?.navigateTo(result.checkoutUrl);
   } catch (err) {
     console.error("Checkout failed:", err);
     const isLocal = ["localhost", "127.0.0.1"].includes(window.location.hostname);

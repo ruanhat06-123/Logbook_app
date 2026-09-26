@@ -9,7 +9,7 @@ if (!isFleetAdmin(context)) {
   await shell("drivers", `<section class="card"><div class="card-head"><h2>Fleet administrator access required</h2></div><p class="row-sub">Only fleet owners can manage driver accounts.</p></section>`);
 } else {
   const [{ data: drivers = [], error }, { data: availableVehicles = [], error: vehicleError }] = await Promise.all([
-    supabase.from("fleet_drivers").select("id, first_name, last_name, email, status, created_at").eq("fleet_id", context.fleetId).order("created_at", { ascending: false }),
+    supabase.from("fleet_drivers").select("id, first_name, last_name, email, status, demerit_points, demerit_points_checked_at, prdp_number, prdp_expiry_date, created_at").eq("fleet_id", context.fleetId).order("created_at", { ascending: false }),
     supabase.from("vehicles").select("id, number_plate, make, model").eq("fleet_id", context.fleetId).order("number_plate"),
   ]);
   const driverIds = (drivers || []).map((driver) => driver.id);
@@ -17,6 +17,17 @@ if (!isFleetAdmin(context)) {
     ? await supabase.from("fleet_driver_vehicles").select("driver_id, vehicle_id").in("driver_id", driverIds)
     : { data: [], error: null };
   const rows = drivers || [];
+  const today = new Date();
+  const complianceWarnings = rows.flatMap((driver) => {
+    const name = `${driver.first_name || ""} ${driver.last_name || ""}`.trim() || driver.email;
+    const warnings = [];
+    if (Number(driver.demerit_points || 0) >= 9) warnings.push(`${name} has ${driver.demerit_points}/15 AARTO demerit points.`);
+    if (driver.prdp_expiry_date) {
+      const days = Math.ceil((new Date(`${driver.prdp_expiry_date}T23:59:59`) - today) / 86400000);
+      if (days <= 30) warnings.push(`${name}'s PrDP ${days < 0 ? "expired" : `expires in ${days} days`}.`);
+    }
+    return warnings;
+  });
   const assignmentMap = new Map();
   assignments.forEach((assignment) => {
     if (!assignmentMap.has(assignment.driver_id)) assignmentMap.set(assignment.driver_id, new Set());
@@ -31,13 +42,17 @@ if (!isFleetAdmin(context)) {
         <div class="field"><label for="driver-email">Email address</label><input id="driver-email" type="email" required></div>
         <div class="field"><label for="driver-password">Password</label><input id="driver-password" type="password" minlength="8" required></div>
         <div class="field"><label for="driver-status">Status</label><select id="driver-status"><option value="active">Active</option><option value="suspended">Suspended</option></select></div>
+        <div class="field"><label for="driver-demerit-points">AARTO demerit points</label><input id="driver-demerit-points" type="number" min="0" max="15" step="1" value="0"></div>
+        <div class="field"><label for="driver-prdp-number">PrDP number</label><input id="driver-prdp-number"></div>
+        <div class="field"><label for="driver-prdp-expiry">PrDP expiry</label><input id="driver-prdp-expiry" type="date"></div>
         <div class="form-actions field full"><button class="btn btn-primary" type="submit">Create driver</button></div>
       </form><div id="driver-notice" class="notice" hidden></div>
     </section>
     ${error ? `<section class="card"><div class="card-head"><h2>Driver accounts unavailable</h2></div><p class="row-sub">${escapeHtml(error.message || "The driver accounts could not be loaded. Check the fleet RLS migration.")}</p></section>` : ""}
+    ${complianceWarnings.length ? `<section class="card" role="alert"><div class="card-head"><h2>Driver compliance reminders</h2></div>${complianceWarnings.map((warning) => `<p class="row-sub">${escapeHtml(warning)} Check the official NatIS record before taking action.</p>`).join("")}</section>` : ""}
     ${(vehicleError || assignmentError) ? `<section class="card"><div class="card-head"><h2>Vehicle assignments unavailable</h2></div><p class="row-sub">${escapeHtml((vehicleError || assignmentError).message || "Run the fleet driver RLS migration to manage vehicle access.")}</p></section>` : ""}
     <section class="card"><div class="card-head"><h2>Driver accounts</h2><a class="text-link" href="fleet.html">Fleet dashboard</a></div>
-      ${rows.length ? `<div class="table-responsive"><table class="table"><thead><tr><th>Driver details</th><th>Status</th><th>Available vehicles</th><th>Created</th></tr></thead><tbody>${rows.map((driver) => `<tr><td><form class="driver-edit-form" data-driver-id="${escapeHtml(driver.id)}"><div style="display:grid;gap:6px;min-width:240px"><input name="firstName" value="${escapeHtml(driver.first_name)}" aria-label="First name"><input name="lastName" value="${escapeHtml(driver.last_name)}" aria-label="Last name"><input name="email" type="email" value="${escapeHtml(driver.email)}" aria-label="Email"><input name="password" type="password" minlength="8" placeholder="New password (optional)" aria-label="New password"><select name="status" aria-label="Status"><option value="active"${driver.status === "active" ? " selected" : ""}>Active</option><option value="suspended"${driver.status === "suspended" ? " selected" : ""}>Suspended</option></select><button class="btn btn-small" type="submit">Save driver</button></div></form></td><td>${escapeHtml(driver.status)}</td><td><select multiple size="3" data-driver-vehicles="${escapeHtml(driver.id)}" aria-label="Vehicles available to ${escapeHtml(`${driver.first_name} ${driver.last_name}`)}">${availableVehicles.map((vehicle) => `<option value="${escapeHtml(vehicle.id)}"${assignmentMap.get(driver.id)?.has(String(vehicle.id)) ? " selected" : ""}>${escapeHtml(vehicle.number_plate || "Vehicle")} · ${escapeHtml(`${vehicle.make || ""} ${vehicle.model || ""}`.trim())}</option>`).join("")}</select><button class="btn btn-small" type="button" data-save-driver-vehicles="${escapeHtml(driver.id)}">Save vehicles</button></td><td>${escapeHtml(new Date(driver.created_at).toLocaleDateString("en-GB"))}</td></tr>`).join("")}</tbody></table></div>` : '<div class="empty">No driver accounts yet.</div>'}
+      ${rows.length ? `<div class="table-responsive"><table class="table"><thead><tr><th>Driver details</th><th>Status</th><th>AARTO / PrDP</th><th>Available vehicles</th><th>Created</th></tr></thead><tbody>${rows.map((driver) => `<tr><td><form class="driver-edit-form" data-driver-id="${escapeHtml(driver.id)}"><div style="display:grid;gap:6px;min-width:240px"><input name="firstName" value="${escapeHtml(driver.first_name)}" aria-label="First name"><input name="lastName" value="${escapeHtml(driver.last_name)}" aria-label="Last name"><input name="email" type="email" value="${escapeHtml(driver.email)}" aria-label="Email"><input name="password" type="password" minlength="8" placeholder="New password (optional)" aria-label="New password"><select name="status" aria-label="Status"><option value="active"${driver.status === "active" ? " selected" : ""}>Active</option><option value="suspended"${driver.status === "suspended" ? " selected" : ""}>Suspended</option></select><input name="demeritPoints" type="number" min="0" max="15" step="1" value="${escapeHtml(driver.demerit_points ?? 0)}" aria-label="AARTO demerit points"><input name="prdpNumber" value="${escapeHtml(driver.prdp_number || "")}" placeholder="PrDP number" aria-label="PrDP number"><input name="prdpExpiryDate" type="date" value="${escapeHtml(driver.prdp_expiry_date || "")}" aria-label="PrDP expiry"><button class="btn btn-small" type="submit">Save driver</button></div></form></td><td>${escapeHtml(driver.status)}</td><td>${Number(driver.demerit_points || 0)}/15 points${driver.prdp_expiry_date ? `<br>PrDP expires ${escapeHtml(driver.prdp_expiry_date)}` : "<br>PrDP expiry not entered"}</td><td><select multiple size="3" data-driver-vehicles="${escapeHtml(driver.id)}" aria-label="Vehicles available to ${escapeHtml(`${driver.first_name} ${driver.last_name}`)}">${availableVehicles.map((vehicle) => `<option value="${escapeHtml(vehicle.id)}"${assignmentMap.get(driver.id)?.has(String(vehicle.id)) ? " selected" : ""}>${escapeHtml(vehicle.number_plate || "Vehicle")} · ${escapeHtml(`${vehicle.make || ""} ${vehicle.model || ""}`.trim())}</option>`).join("")}</select><button class="btn btn-small" type="button" data-save-driver-vehicles="${escapeHtml(driver.id)}">Save vehicles</button></td><td>${escapeHtml(new Date(driver.created_at).toLocaleDateString("en-GB"))}</td></tr>`).join("")}</tbody></table></div>` : '<div class="empty">No driver accounts yet.</div>'}
     </section>
   `);
   document.querySelector("#driver-form")?.addEventListener("submit", async (event) => {
@@ -53,7 +68,7 @@ if (!isFleetAdmin(context)) {
         const requestDriverCreation = async (accessToken) => fetch(`${apiBase}/api/fleet/drivers`, {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
-          body: JSON.stringify({ firstName: form.querySelector("#first-name").value.trim(), lastName: form.querySelector("#last-name").value.trim(), email: form.querySelector("#driver-email").value.trim(), password: form.querySelector("#driver-password").value, status: form.querySelector("#driver-status").value }),
+          body: JSON.stringify({ firstName: form.querySelector("#first-name").value.trim(), lastName: form.querySelector("#last-name").value.trim(), email: form.querySelector("#driver-email").value.trim(), password: form.querySelector("#driver-password").value, status: form.querySelector("#driver-status").value, demeritPoints: Number(form.querySelector("#driver-demerit-points").value || 0), prdpNumber: form.querySelector("#driver-prdp-number").value.trim(), prdpExpiryDate: form.querySelector("#driver-prdp-expiry").value || null }),
         });
 
         let { data: sessionData } = await supabase.auth.refreshSession();

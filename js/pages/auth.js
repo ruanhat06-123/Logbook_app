@@ -17,7 +17,7 @@ async function continueWithOfflineSession() {
     document.cookie = `logmate_email=${encodeURIComponent(email)}; Max-Age=31536000; Path=/; SameSite=Lax`;
   }
   syncSubscription(data.session.user.id).catch(() => {});
-  window.location.href = "dashboard.html";
+  globalThis.LogMateUI?.navigateTo("app.html?page=dashboard");
   return true;
 }
 
@@ -390,7 +390,7 @@ forgotPassword.addEventListener("click", async () => {
     return;
   }
   forgotPassword.disabled = true;
-  const redirectTo = "https://logmate.co.za/reset-password.html";
+  const redirectTo = "https://logmate.co.za/html/app.html?page=reset-password";
   const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
   notice.hidden = false;
   notice.textContent = error
@@ -501,5 +501,5 @@ form.addEventListener("submit", async (event) => {
     enrollBiometricForUser(result.data.session.user).then(updateBiometricButtonVisibility);
   }
   if (result.data.session)
-    setTimeout(() => (window.location.href = "dashboard.html"), 350);
+    setTimeout(() => globalThis.LogMateUI?.navigateTo("app.html?page=dashboard"), 350);
 });

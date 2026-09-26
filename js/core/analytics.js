@@ -302,6 +302,30 @@ function projectTaxYearSplit(trips) {
   };
 }
 
+function projectTaxYearSplitInWorker(trips) {
+  if (typeof Worker === "undefined") return Promise.resolve(projectTaxYearSplit(trips));
+  return new Promise((resolve) => {
+    const worker = new Worker(new URL("./analyticsWorker.js", import.meta.url), { type: "module" });
+    const id = crypto.randomUUID();
+    const timeout = setTimeout(() => {
+      worker.terminate();
+      resolve(projectTaxYearSplit(trips));
+    }, 1500);
+    worker.onmessage = (event) => {
+      if (event.data?.id !== id) return;
+      clearTimeout(timeout);
+      worker.terminate();
+      resolve(event.data.result);
+    };
+    worker.onerror = () => {
+      clearTimeout(timeout);
+      worker.terminate();
+      resolve(projectTaxYearSplit(trips));
+    };
+    worker.postMessage({ id, trips });
+  });
+}
+
 /**
  * Build the fuel efficiency trend series (per fill-up, chronological) plus
  * the drop alert relative to the configurable threshold.
@@ -393,7 +417,7 @@ export async function computeAnalytics({ vehicles = [], trips = [], fuelEntries 
   const serviceIntervals = analyzeServiceIntervals(vehicles);
   const servicePredictions = predictServiceDates(vehicles, trips);
   const monthlyFuel = estimateMonthlyFuelCost(fuelEntries);
-  const taxYearSplit = projectTaxYearSplit(trips);
+  const taxYearSplit = await projectTaxYearSplitInWorker(trips);
   const efficiency = fuelEfficiencyTrend(fuelEntries);
   const categories = tripCategoryTotals(trips);
   const compliance = serviceComplianceScore(serviceIntervals);

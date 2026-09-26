@@ -9,6 +9,7 @@ const crypto = require("crypto");
 const fetch = require("node-fetch"); // npm i node-fetch@2
 const { createClient } = require("@supabase/supabase-js"); // npm i @supabase/supabase-js
 const { getDmprFuelPrices } = require("./dmprFuelPrices");
+const { getFuelPriceCatalog } = require("./fuelPriceApi");
 const pricingCatalog = require("../json/pricing.json");
 const app = express();
 app.disable("x-powered-by");
@@ -32,7 +33,7 @@ app.use((req, res, next) => {
   if (allowedOrigins.has(origin) || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin || "")) {
     res.setHeader("Access-Control-Allow-Origin", origin);
   }
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
   res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
   res.setHeader("X-Frame-Options", "DENY");
@@ -131,7 +132,7 @@ app.post("/api/recaptcha/verify", async (req, res) => {
 app.post("/api/fleet/drivers", async (req, res) => {
   try {
     const owner = await getUserFromRequest(req);
-    const { firstName, lastName, email, password, status = "active" } = req.body || {};
+    const { firstName, lastName, email, password, status = "active", demeritPoints = 0, prdpNumber = null, prdpExpiryDate = null } = req.body || {};
     if (!firstName || !lastName || !email || !password) return res.status(400).json({ error: "First name, last name, email, and password are required" });
     if (!["active", "suspended"].includes(status)) return res.status(400).json({ error: "Invalid driver status" });
 
@@ -142,6 +143,8 @@ app.post("/api/fleet/drivers", async (req, res) => {
     const driverLimit = Number(fleet.vehicle_limit || 0) * 2;
     if ((count || 0) >= driverLimit) return res.status(409).json({ error: `This fleet has reached its ${driverLimit}-driver limit` });
 
+    const points = Number(demeritPoints);
+    if (!Number.isInteger(points) || points < 0 || points > 15) return res.status(400).json({ error: "Demerit points must be a whole number from 0 to 15" });
     const normalizedEmail = email.trim().toLowerCase();
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
       email: normalizedEmail,
@@ -150,7 +153,7 @@ app.post("/api/fleet/drivers", async (req, res) => {
       user_metadata: { first_name: firstName.trim(), surname: lastName.trim(), full_name: `${firstName.trim()} ${lastName.trim()}` },
     });
     if (authError) return res.status(400).json({ error: authError.message });
-    const { data: driver, error: driverError } = await supabaseAdmin.from("fleet_drivers").insert({ fleet_id: fleet.id, user_id: authData.user.id, first_name: firstName.trim(), last_name: lastName.trim(), email: normalizedEmail, status }).select().single();
+    const { data: driver, error: driverError } = await supabaseAdmin.from("fleet_drivers").insert({ fleet_id: fleet.id, user_id: authData.user.id, first_name: firstName.trim(), last_name: lastName.trim(), email: normalizedEmail, status, demerit_points: points, prdp_number: prdpNumber?.trim() || null, prdp_expiry_date: prdpExpiryDate || null }).select().single();
     if (driverError) {
       await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
       throw driverError;
@@ -165,7 +168,7 @@ app.post("/api/fleet/drivers", async (req, res) => {
 app.patch("/api/fleet/drivers/:driverId", async (req, res) => {
   try {
     const owner = await getUserFromRequest(req);
-    const { firstName, lastName, email, password, status } = req.body || {};
+    const { firstName, lastName, email, password, status, demeritPoints = 0, prdpNumber = null, prdpExpiryDate = null } = req.body || {};
     if (!firstName || !lastName || !email || !["active", "suspended"].includes(status)) {
       return res.status(400).json({ error: "First name, last name, email, and status are required" });
     }
@@ -180,6 +183,8 @@ app.patch("/api/fleet/drivers/:driverId", async (req, res) => {
       .single();
     if (driverError || !driver) return res.status(404).json({ error: "Driver was not found in your fleet" });
 
+    const points = Number(demeritPoints);
+    if (!Number.isInteger(points) || points < 0 || points > 15) return res.status(400).json({ error: "Demerit points must be a whole number from 0 to 15" });
     const authUpdate = { email: email.trim().toLowerCase(), user_metadata: { first_name: firstName.trim(), surname: lastName.trim(), full_name: `${firstName.trim()} ${lastName.trim()}` } };
     if (password?.trim()) authUpdate.password = password.trim();
     const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(driver.user_id, authUpdate);
@@ -187,10 +192,10 @@ app.patch("/api/fleet/drivers/:driverId", async (req, res) => {
 
     const { data: updated, error: updateError } = await supabaseAdmin
       .from("fleet_drivers")
-      .update({ first_name: firstName.trim(), last_name: lastName.trim(), email: email.trim().toLowerCase(), status })
+      .update({ first_name: firstName.trim(), last_name: lastName.trim(), email: email.trim().toLowerCase(), status, demerit_points: points, demerit_points_checked_at: new Date().toISOString(), prdp_number: prdpNumber?.trim() || null, prdp_expiry_date: prdpExpiryDate || null })
       .eq("id", driver.id)
       .eq("fleet_id", fleet.id)
-      .select("id, first_name, last_name, email, status, created_at")
+      .select("id, first_name, last_name, email, status, demerit_points, demerit_points_checked_at, prdp_number, prdp_expiry_date, created_at")
       .single();
     if (updateError) return res.status(400).json({ error: updateError.message });
     return res.json({ driver: updated });
@@ -309,14 +314,24 @@ app.get("/api/health", (req, res) => {
 });
 
 app.get("/api/fuel-prices", async (req, res) => {
+  const fuelType = String(req.query.fuelType || "petrol_95").toLowerCase();
+  const key = ["petrol_93", "petrol_95", "diesel_005", "diesel_05"].includes(fuelType) ? fuelType : "petrol_95";
+
+  if (process.env.FUELPRICE_API_KEY) {
+    try {
+      const catalog = await getFuelPriceCatalog(key);
+      return res.json(catalog);
+    } catch (err) {
+      console.warn("FuelPrice API unavailable; falling back to DMPR fuel prices:", err.message);
+    }
+  }
+
   try {
     const catalog = await getDmprFuelPrices();
-    const fuelType = String(req.query.fuelType || "petrol_95").toLowerCase();
-    const key = ["petrol_93", "petrol_95", "diesel_005", "diesel_05"].includes(fuelType) ? fuelType : "petrol_95";
     const prices = catalog.prices
       .map((row) => ({ region: row.region, price: row[key] }))
       .filter((row) => Number.isFinite(row.price));
-    return res.json({ ...catalog, fuelType: key, prices });
+    return res.json({ ...catalog, source: "DMPR", fuelType: key, prices });
   } catch (err) {
     console.error("DMPR fuel price scrape error", err);
     return res.status(502).json({ error: "DMPR fuel prices are temporarily unavailable" });
@@ -351,8 +366,8 @@ app.post("/api/billing/checkout", async (req, res) => {
     const fields = {
       merchant_id: process.env.PAYFAST_MERCHANT_ID,
       merchant_key: process.env.PAYFAST_MERCHANT_KEY,
-      return_url: process.env.PAYFAST_RETURN_URL || `${baseUrl}/html/checkout.html?status=success&product=${encodeURIComponent(product)}${isExport ? "" : `&plan=${encodeURIComponent(tier)}`}`,
-      cancel_url: process.env.PAYFAST_CANCEL_URL || `${baseUrl}/html/checkout.html?status=cancelled&product=${encodeURIComponent(product)}${isExport ? "" : `&plan=${encodeURIComponent(tier)}`}`,
+      return_url: process.env.PAYFAST_RETURN_URL || `${baseUrl}/html/app.html?page=checkout&status=success&product=${encodeURIComponent(product)}${isExport ? "" : `&plan=${encodeURIComponent(tier)}`}`,
+      cancel_url: process.env.PAYFAST_CANCEL_URL || `${baseUrl}/html/app.html?page=checkout&status=cancelled&product=${encodeURIComponent(product)}${isExport ? "" : `&plan=${encodeURIComponent(tier)}`}`,
       notify_url: process.env.PAYFAST_NOTIFY_URL || `${baseUrl}/api/webhooks/payfast`,
       email_address: user.email,
       amount: amount.toFixed(2),

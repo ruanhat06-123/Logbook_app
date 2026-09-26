@@ -48,7 +48,7 @@ const normalizeFuelType = (value) => {
 
 /**
  * Get the suggested fuel price for a country + fuel type.
- * Tries the cached DMPR proxy first for South Africa, then Supabase; on any failure (offline, error, no row) falls back
+ * Tries the server-side FuelPrice.co.za proxy (with DMPR server fallback) for South Africa, then Supabase; on any failure (offline, error, no row) falls back
  * to the last cached price for the same combination, then to any cached
  * price for the country, and finally to the most recent cached price at all.
  *
@@ -77,14 +77,16 @@ export async function getRegionalFuelPrice({ supabase, countryCode, fuelType } =
           const record = {
             price: Number(average.toFixed(2)),
             currency: data.currency || "R",
-            region: "South Africa regional average",
-            source: "DMPR",
+            region: regional.length > 1
+              ? `South Africa average (${regional.map((row) => row.region).filter(Boolean).join(" / ")})`
+              : regional[0]?.region || "South Africa regional average",
+            source: data.source || "DMPR",
             fetchedAt: data.fetchedAt || new Date().toISOString(),
           };
           const cache = await readCache();
           cache[cacheKeyFor(country, type)] = record;
           await writeCache(cache);
-          return { ...record, fromCache: false, message: `DMPR price effective ${data.effectiveFrom || "currently"}` };
+          return { ...record, fromCache: false, message: `${record.source} price effective ${data.effectiveFrom || "currently"}` };
         }
       }
     }

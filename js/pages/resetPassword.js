@@ -80,7 +80,7 @@ form.addEventListener("submit", async (event) => {
   if (!session) {
     button.disabled = true;
     const { error } = await supabase.auth.resetPasswordForEmail(emailInput.value.trim(), {
-      redirectTo: "https://logmate.co.za/reset-password.html",
+      redirectTo: "https://logmate.co.za/html/app.html?page=reset-password",
     });
     showNotice(error ? error.message : "A new password reset link has been sent to your email.", Boolean(error));
     button.disabled = false;
@@ -103,5 +103,5 @@ form.addEventListener("submit", async (event) => {
   }
   showNotice("Password updated. You can now sign in with your new password.");
   form.reset();
-  setTimeout(() => { window.location.href = "login.html"; }, 1200);
+  setTimeout(() => { globalThis.LogMateUI?.navigateTo("app.html?page=login"); }, 1200);
 });

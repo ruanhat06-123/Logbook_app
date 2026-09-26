@@ -45,7 +45,7 @@ export const notifyServiceDue = async (vehicleItem) => {
     icon: "/assets/logo.svg",
     badge: "/assets/logo.svg",
     requireInteraction: true,
-    data: { url: "/html/vehicles.html" },
+    data: { url: "/html/app.html?page=vehicles" },
   };
 
   try {

@@ -9,7 +9,10 @@ LogMate helps users record vehicles, fuel fill-ups, mileage, trips, service hist
 ## Public website
 
 - Home: https://logmate.co.za/
-- Account sign-in: https://logmate.co.za/html/login.html (private utility page; do not index)
+- Terms and Conditions: https://logmate.co.za/terms.html
+- Privacy Policy: https://logmate.co.za/privacy.html
+- Refund and Cancellation Policy: https://logmate.co.za/refund-policy.html
+- Account sign-in: https://logmate.co.za/html/app.html?page=login (private utility route; do not index)
 
 ## Product areas
 

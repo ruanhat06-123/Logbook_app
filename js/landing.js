@@ -28,7 +28,7 @@ const hasCachedAccount = () => {
   });
 };
 
-if (hasCachedAccount()) window.location.replace("html/login.html");
+if (hasCachedAccount()) globalThis.LogMateUI?.navigateTo("html/app.html?page=login", { replace: true });
 
 const pricingCatalog = await fetch("pricing.json").then((response) => response.json());
 const formatPrice = (amount, suffix) => `${pricingCatalog.currency} ${Number(amount).toLocaleString("en-ZA")} / ${suffix}`;
@@ -39,7 +39,7 @@ const pricingCards = Object.entries(pricingCatalog.plans)
       <div class="landing-price"><strong>${formatPrice(plan.monthly, "month")}</strong></div>
       <p>Flexible monthly billing.</p>
       <ul class="landing-plan-features">${(plan.features || []).map((feature) => `<li>${feature}</li>`).join("")}</ul>
-      <a class="btn ${tier === "premium" ? "btn-primary" : "btn-secondary"}" href="html/login.html?mode=signup">Get started →</a>
+      <a class="btn ${tier === "premium" ? "btn-primary" : "btn-secondary"}" href="html/app.html?page=login&mode=signup">Get started →</a>
     </article>`)
   .join("");
 

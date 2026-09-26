@@ -35,6 +35,7 @@ export const legalTermsMarkup = () => `
         <p><strong>13. Disclaimers and liability.</strong> LogMate is provided on an “as available” basis, and you should maintain your own backups. To the extent permitted by law, LogMate is not responsible for indirect loss, lost profits, missed deductions, penalties, data-entry errors or decisions made solely from a report. Nothing excludes liability that cannot lawfully be excluded.</p>
         <p><strong>14. Changes.</strong> We may update these terms when the service, law or regulatory expectations change. Material updates may require you to review and accept them before continued use.</p>
         <p><strong>15. Governing law and contact.</strong> These terms are governed by the laws of the Republic of South Africa. Questions about these terms or your account can be sent through the LogMate support channel.</p>
+        <p>Read the full <a href="../terms.html">Terms and Conditions</a>, <a href="../privacy.html">Privacy Policy</a>, and <a href="../refund-policy.html">Refund and Cancellation Policy</a>.</p>
       </div>
       <div class="consent-modal-actions">
         <button class="btn btn-primary" type="button" data-accept-terms>I Accept the Terms</button>
@@ -49,7 +50,7 @@ export const setupCookieConsent = () => {
   document.body.insertAdjacentHTML("beforeend", `
     <aside class="cookie-banner" data-cookie-banner aria-label="Cookie preferences">
       <div class="cookie-banner-content">
-        <p><strong>Choose your cookie preferences</strong>Essential cookies keep LogMate secure. Analytics and marketing cookies help us improve the service and communicate relevant updates.</p>
+        <p><strong>Choose your cookie preferences</strong>Essential cookies keep LogMate secure. Analytics and marketing cookies help us improve the service and communicate relevant updates. Read our <a href="../privacy.html">Privacy Policy</a>.</p>
         <div class="cookie-banner-actions">
           <button class="btn btn-primary" type="button" data-cookie-choice="essential_analytics_marketing">Accept All</button>
           <button class="btn btn-secondary" type="button" data-cookie-choice="essential_analytics">Limited</button>

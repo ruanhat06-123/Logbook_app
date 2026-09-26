@@ -1,5 +1,6 @@
 // fleet.js
 import "../core/app.js";
+import { getFleetContext } from "../core/fleetAccess.js";
 
 const user = await requireAuth();
 if (!user) throw new Error("Not authenticated");
@@ -27,11 +28,36 @@ if (!isFleetTier(subscriptionState)) {
   `,
   );
 } else {
+  const fleetContext = await getFleetContext(user);
   const [currentVehicles, logRowsResp, tripRowsResp] = await Promise.all([
     vehicles(),
     supabase.from("car_logbook").select("*").order("created_at", { ascending: false }),
     supabase.from("trips").select("*").order("created_at", { ascending: false }),
   ]);
+
+  const vehicleIds = currentVehicles.map((item) => item.id).filter(Boolean);
+  const [{ data: fleetDrivers = [], error: driverError }, { data: driverAssignments = [], error: assignmentError }] =
+    fleetContext?.fleetId && vehicleIds.length
+      ? await Promise.all([
+          supabase
+            .from("fleet_drivers")
+            .select("id, first_name, last_name, email, status")
+            .eq("fleet_id", fleetContext.fleetId),
+          supabase
+            .from("fleet_driver_vehicles")
+            .select("driver_id, vehicle_id")
+            .in("vehicle_id", vehicleIds),
+        ])
+      : [{ data: [], error: null }, { data: [], error: null }];
+
+  const driversById = new Map((fleetDrivers || []).map((driver) => [String(driver.id), driver]));
+  const assignmentsByVehicle = new Map();
+  (driverAssignments || []).forEach((assignment) => {
+    const vehicleKey = String(assignment.vehicle_id);
+    if (!assignmentsByVehicle.has(vehicleKey)) assignmentsByVehicle.set(vehicleKey, []);
+    const driver = driversById.get(String(assignment.driver_id));
+    if (driver) assignmentsByVehicle.get(vehicleKey).push(driver);
+  });
 
   const currentLogs = logRowsResp?.data || [];
   const currentTrips = tripRowsResp?.data || [];
@@ -55,6 +81,21 @@ if (!isFleetTier(subscriptionState)) {
         .map((item) => {
           const vehicleFuel = fuelLogs.filter((log) => String(log.vehicle_id) === String(item.id));
           const vehicleTrips = currentTrips.filter((trip) => String(trip.vehicle_id) === String(item.id));
+          const assignedDrivers = assignmentsByVehicle.get(String(item.id)) || [];
+          const driverReports = assignedDrivers.map((driver) => {
+            const driverTrips = vehicleTrips.filter((trip) => String(trip.driver_id) === String(driver.id));
+            const driverDistance = driverTrips.reduce((sum, trip) => sum + Number(trip.trip_distance_km || 0), 0);
+            const driverName = `${driver.first_name || ""} ${driver.last_name || ""}`.trim() || driver.email || "Driver";
+            return `<span class="vehicle-driver-report"><strong>${escapeHtml(driverName)}</strong> · ${driverTrips.length} trips · ${driverDistance.toLocaleString()} km</span>`;
+          });
+          const unassignedTrips = vehicleTrips.filter((trip) => !trip.driver_id);
+          if (unassignedTrips.length) {
+            const unassignedDistance = unassignedTrips.reduce((sum, trip) => sum + Number(trip.trip_distance_km || 0), 0);
+            driverReports.push(`<span class="vehicle-driver-report"><strong>Unassigned</strong> · ${unassignedTrips.length} trips · ${unassignedDistance.toLocaleString()} km</span>`);
+          }
+          const driverReportMarkup = driverReports.length
+            ? driverReports.join("")
+            : '<span class="vehicle-driver-report vehicle-driver-report-muted">No driver trips recorded</span>';
           const spend = vehicleFuel.reduce((sum, log) => sum + Number(log.total_cost || 0), 0);
           const distance = vehicleTrips.reduce((sum, trip) => sum + Number(trip.trip_distance_km || 0), 0);
           const next = Number(item.next_service_mileage);
@@ -71,6 +112,7 @@ if (!isFleetTier(subscriptionState)) {
             <div class="row-main">
               <div class="row-title">${escapeHtml(item.number_plate || "Vehicle")} · ${escapeHtml(item.make || "")} ${escapeHtml(item.model || "")}</div>
               <div class="row-sub">${vehicleTrips.length} trips · ${distance.toLocaleString()} km logged · ${money(spend)} fuel spend · ${escapeHtml(serviceLabel)}</div>
+              <div class="vehicle-driver-reports"><span class="vehicle-driver-report-label">Driver reports</span>${driverReportMarkup}</div>
             </div>
             <div class="row-actions">
               <a class="btn btn-small" href="vehicles.html">Open →</a>
@@ -103,6 +145,7 @@ if (!isFleetTier(subscriptionState)) {
     }
     <section class="card">
       <div class="card-head"><h2>Vehicles</h2><a class="text-link" href="trip-report.html">Fleet trip report</a></div>
+      ${driverError || assignmentError ? `<p class="row-sub">Driver reports are temporarily unavailable. ${escapeHtml((driverError || assignmentError).message || "Check fleet driver access.")}</p>` : ""}
       ${vehicleRows}
     </section>
   `,

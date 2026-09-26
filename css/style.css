@@ -20,31 +20,92 @@
 
 html {
   background: var(--paper);
-  perspective: 1400px;
   overflow-x: hidden;
+  perspective: 1800px;
+  perspective-origin: left center;
+}
+
+html[data-page-direction="backward"] {
+  perspective-origin: right center;
 }
 
 body.is-entering {
   opacity: 0;
-  transform: rotateY(72deg) translateX(34px);
-  transform-origin: left center;
-  transform-style: preserve-3d;
-  backface-visibility: hidden;
 }
 
-body.is-entering.is-ready {
+body.is-entering-forward {
+  transform: translate3d(3%, 0, -24px) rotateY(-8deg);
+  transform-origin: right center;
+}
+
+body.is-entering-backward {
+  transform: translate3d(-3%, 0, -24px) rotateY(8deg);
+  transform-origin: left center;
+}
+
+body.is-entering-forward.is-ready,
+body.is-entering-backward.is-ready {
   opacity: 1;
-  transform: rotateY(0) translateX(0);
-  transition: opacity 520ms ease-out, transform 520ms cubic-bezier(0.22, 0.8, 0.24, 1);
+  transform: translate3d(0, 0, 0) rotateY(0);
+  transition: opacity 420ms ease-out, transform 620ms cubic-bezier(0.2, 0.7, 0.25, 1);
 }
 
 body.is-leaving {
-  opacity: 0;
-  transform: rotateY(-72deg) translateX(-34px);
-  transform-origin: right center;
   transform-style: preserve-3d;
   backface-visibility: hidden;
-  transition: opacity 360ms ease-in, transform 360ms cubic-bezier(0.64, 0, 0.78, 0.2);
+  pointer-events: none;
+}
+
+body.is-leaving-forward {
+  transform-origin: left center;
+  animation: book-page-turn-forward 620ms cubic-bezier(0.55, 0.05, 0.45, 0.95) forwards;
+}
+
+body.is-leaving-backward {
+  transform-origin: right center;
+  animation: book-page-turn-backward 620ms cubic-bezier(0.55, 0.05, 0.45, 0.95) forwards;
+}
+
+@keyframes book-page-turn-forward {
+  0% {
+    opacity: 1;
+    filter: brightness(1);
+    transform: rotateY(0deg) translateX(0);
+    box-shadow: none;
+  }
+  34% {
+    opacity: 1;
+    filter: brightness(0.98);
+    transform: rotateY(-13deg) translateX(-1%);
+    box-shadow: -10px 0 24px rgba(21, 34, 42, 0.08);
+  }
+  100% {
+    opacity: 0.38;
+    filter: brightness(0.76);
+    transform: rotateY(-82deg) translateX(-3%);
+    box-shadow: -44px 0 72px rgba(21, 34, 42, 0.28);
+  }
+}
+
+@keyframes book-page-turn-backward {
+  0% {
+    opacity: 1;
+    filter: brightness(1);
+    transform: rotateY(0deg) translateX(0);
+    box-shadow: none;
+  }
+  34% {
+    opacity: 1;
+    filter: brightness(0.98);
+    transform: rotateY(13deg) translateX(1%);
+    box-shadow: 10px 0 24px rgba(21, 34, 42, 0.08);
+  }
+  100% {
+    opacity: 0.38;
+    filter: brightness(0.76);
+    transform: rotateY(82deg) translateX(3%);
+    box-shadow: 44px 0 72px rgba(21, 34, 42, 0.28);
+  }
 }
 
 .page-loader {
@@ -89,12 +150,15 @@ body.is-leaving {
 @media (prefers-reduced-motion: reduce) {
   body.is-entering,
   body.is-entering.is-ready,
-  body.is-leaving,
   .page-loader,
   .page-loader.is-complete {
     transition: none;
   }
 
+  body.is-entering-forward,
+  body.is-entering-backward { transform: none; }
+  body.is-leaving-forward,
+  body.is-leaving-backward { animation: none; }
   .page-loader-mark { animation: none; }
 }
 
@@ -108,6 +172,75 @@ body.is-leaving {
 .section-premium {
   padding-top: 120px;
   padding-bottom: 120px;
+}
+
+.landing-legal-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 22px;
+  margin-top: 14px;
+}
+
+.landing-legal-links a,
+.auth-legal-links {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.legal-document {
+  max-width: 1080px;
+  min-height: 100vh;
+}
+
+.legal-content {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: clamp(24px, 5vw, 56px);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+  color: var(--ink);
+  line-height: 1.75;
+}
+
+.legal-content h1,
+.legal-content h2 {
+  color: var(--teal-deep);
+  font-family: Georgia, "Times New Roman", serif;
+}
+
+.legal-content h1 {
+  margin-bottom: 0.6rem;
+  font-size: clamp(2rem, 5vw, 3.2rem);
+}
+
+.legal-content h2 {
+  margin-top: 2.2rem;
+  font-size: 1.35rem;
+}
+
+.legal-content li + li {
+  margin-top: 0.5rem;
+}
+
+.legal-updated,
+.legal-related {
+  color: var(--muted);
+}
+
+.legal-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  max-width: 800px;
+  margin: 1.5rem auto 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.auth-legal-links {
+  margin: 1rem 0 0;
+  text-align: center;
 }
 
 .landing-page p,
@@ -323,6 +456,8 @@ body.is-leaving {
   --radius-compact: 6px;
   --radius-card: 10px;
   --radius-panel: 14px;
+  --link: #b8e8f7;
+  --focus: rgba(143, 196, 217, 0.32);
 }
 [data-theme="dark"] .field input,
 [data-theme="dark"] .field select,
@@ -745,6 +880,43 @@ button,
 }
 .landing-footer span:first-child { color: var(--ink); font-weight: 800; }
 .landing-footer a { color: var(--teal); font-weight: 800; }
+.landing-page .landing-legal-links {
+  flex: 1 0 100%;
+  width: 100%;
+  margin-top: 4px;
+}
+.landing-page .landing-legal-links a,
+.auth-legal-links a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 42px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-compact);
+  background: var(--surface);
+  color: var(--link);
+  font-size: 0.925rem;
+  font-weight: 700;
+  line-height: 1.35;
+  text-decoration: underline;
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 3px;
+}
+.landing-page .landing-legal-links a:hover,
+.auth-legal-links a:hover {
+  border-color: var(--teal);
+  background: color-mix(in srgb, var(--surface) 88%, var(--teal) 12%);
+  color: var(--teal-deep);
+}
+html[data-theme="dark"] body .landing-page .landing-legal-links a,
+html[data-theme="dark"] body .auth-legal-links a {
+  color: var(--link) !important;
+}
+.landing-page .landing-legal-links a:focus-visible,
+.auth-legal-links a:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
 .landing-pricing {
   width: min(1180px, calc(100% - 48px));
   margin: 0 auto;
@@ -1356,6 +1528,28 @@ h3 {
   color: var(--muted);
   font-size: 11px;
   margin-top: 3px;
+}
+.vehicle-driver-reports {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 10px;
+  margin-top: 8px;
+  align-items: baseline;
+}
+.vehicle-driver-report-label {
+  color: var(--teal-deep);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.vehicle-driver-report {
+  color: var(--muted);
+  font-size: 11px;
+}
+.vehicle-driver-report-muted {
+  color: var(--muted);
+  font-style: italic;
 }
 .row-value {
   text-align: right;

@@ -13,7 +13,7 @@ const user = await requireAuth();
 if (!user) throw new Error("Not authenticated");
 const fleetContext = await getFleetContext(user);
 if (isFleetAdmin(fleetContext)) {
-  window.location.replace("drivers.html");
+  globalThis.LogMateUI?.navigateTo("app.html?page=drivers", { replace: true });
   throw new Error("Fleet owners cannot log fuel entries");
 }
 

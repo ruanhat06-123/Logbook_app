@@ -1,6 +1,6 @@
 # LogMate SEO implementation guide
 
-This repository currently has one public marketing URL: `https://logmate.co.za/`. The feature and pricing content is rendered on the home page, while the files under `/html/` are application, authentication, checkout, recovery, or utility routes. Keep those private routes out of search results.
+The public marketing URL is `https://logmate.co.za/`; public legal information is published at `/terms.html`, `/privacy.html`, and `/refund-policy.html`. The file under `/html/app.html` is the application, authentication, checkout, recovery, and utility route. Keep that private app route out of search results.
 
 ## 1. Sitemap and robots
 
@@ -42,7 +42,7 @@ Every page under `/html/` should include this head element. It is present on the
 The HTTP equivalent is useful as a deployment backstop:
 
 ```apache
-<FilesMatch "^(dashboard|vehicles|logbook|trip|report|trip-report|analytics|help|fleet|settings|login|checkout|reset-password|offline|add-vehicle)\.html$">
+<FilesMatch "^app\.html$">
   Header set X-Robots-Tag "noindex, nofollow, noarchive"
 </FilesMatch>
 ```
@@ -116,7 +116,7 @@ Run this in DevTools to audit image alternatives:
 [...document.images].filter((image) => !image.hasAttribute("alt") || image.alt.trim() === "").map((image) => image.src);
 ```
 
-Use root-relative links for public URLs (`/features/`) and document-relative links only inside the current static app directory (`../html/login.html`). Run a crawler such as the free desktop version of Screaming Frog SEO Spider, or `lychee` in CI, to catch dead navigation anchors.
+Use root-relative links for public URLs (`/features/`) and point private app navigation to the single entry document (`/html/app.html?page=login`). Run a crawler such as the free desktop version of Screaming Frog SEO Spider, or `lychee` in CI, to catch dead navigation anchors.
 
 ## 6. Performance and mobile checks
 

@@ -3,30 +3,34 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="LogMate helps you track fuel, trips, service reminders, and vehicle logbook records in one secure driving dashboard." />
+    <meta name="description" content="Fleet management software for South African businesses: manage vehicles, drivers, trips, fuel, compliance, and reports in one secure platform." />
     <meta name="robots" content="index, follow" />
     <meta name="google-site-verification" content="K7CF578UzRKUtA6Zsd5Evl0czCloESDnkOxqaVnsjk0" />
     <meta name="theme-color" content="#0b3d52" />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://logmate.co.za/" />
-    <meta property="og:title" content="LogMate | Vehicle, fuel, and trip logbook" />
-    <meta property="og:description" content="Track vehicles, fuel, trips, service reminders, and logbook records in one secure driving dashboard." />
-    <meta property="og:image" content="https://logmate.co.za/assets/logo.svg" />
-    <meta property="og:image:alt" content="LogMate logo" />
-    <meta name="twitter:card" content="summary" />
+    <meta property="og:title" content="LogMate | Fleet and vehicle management software" />
+    <meta property="og:description" content="Manage vehicles, drivers, trips, fuel, compliance, and reports from one South African fleet platform." />
+    <meta property="og:image" content="https://logmate.co.za/assets/og-image.png" />
+    <meta property="og:image:secure_url" content="https://logmate.co.za/assets/og-image.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="LogMate fleet and vehicle management software" />
+    <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="LogMate | Vehicle, fuel, and trip logbook" />
-    <meta name="twitter:description" content="Track vehicles, fuel, trips, service reminders, and logbook records in one secure driving dashboard." />
-    <meta name="twitter:image" content="https://logmate.co.za/assets/logo.svg" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; script-src 'self' https://esm.sh; connect-src 'self' https://*.supabase.co https://*.openrouteservice.org https://*.payfast.co.za; font-src 'self' data:; upgrade-insecure-requests; trusted-types default;" />
-    <title>LogMate | Vehicle, fuel, and trip logbook</title>
+    <meta name="twitter:description" content="Manage vehicles, drivers, trips, fuel, compliance, and reports from one South African fleet platform." />
+    <meta name="twitter:image" content="https://logmate.co.za/assets/og-image.png" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; form-action 'self'; object-src 'none'; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; script-src 'self' https://esm.sh; connect-src 'self' https://*.supabase.co https://*.openrouteservice.org https://*.payfast.co.za; font-src 'self' data:; upgrade-insecure-requests; trusted-types default;" />
+    <title>LogMate | Fleet management and vehicle tracking software</title>
     <link rel="canonical" href="https://logmate.co.za/" />
     <link rel="icon" type="image/svg+xml" sizes="64x64" href="assets/logo.svg" />
     <link rel="apple-touch-icon" sizes="64x64" href="assets/logo.svg" />
     <link rel="manifest" href="manifest.json" />
     <link rel="alternate" hreflang="en" href="https://logmate.co.za/" />
-    <link rel="stylesheet" href="bootstrap-5.3.8-dist/css/bootstrap.min.css" />
-    <link rel="stylesheet" href="css/style.css" />
-    <script src="js/core/pageTransitions.js" defer></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" crossorigin="anonymous" />
+    <link rel="stylesheet" href="css/style.css?v=42" />
+    <script src="js/core/pageTransitions.js?v=42" defer></script>
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
@@ -86,14 +90,14 @@
     <main class="landing-page">
       <nav class="landing-nav navbar navbar-expand-lg">
         <a class="brand" href="index.html"><img class="brand-mark" src="assets/logo.svg" alt="" /> LogMate</a>
-        <div class="landing-nav-actions"><a class="landing-login" href="html/login.html">Log in</a><a class="btn btn-primary" href="html/login.html?mode=signup">Create account</a></div>
+        <div class="landing-nav-actions"><a class="landing-login" href="html/app.html?page=login">Log in</a><a class="btn btn-primary" href="html/app.html?page=login&amp;mode=signup">Create account</a></div>
       </nav>
       <section class="landing-hero section-premium">
         <div class="landing-hero-copy">
           <div class="eyebrow">Your driving, in one place</div>
           <h1>Keep every journey moving.</h1>
           <p>LogMate brings vehicles, fuel, live trips, service history, reminders, and reports into one calm, useful logbook built for everyday driving.</p>
-          <div class="landing-actions"><a class="btn btn-primary" href="html/login.html?mode=signup">Start your logbook →</a><button class="btn btn-secondary" type="button" id="install-app" hidden>Install LogMate</button><a class="landing-text-link" href="html/login.html">Already have an account? Log in</a></div>
+          <div class="landing-actions"><a class="btn btn-primary" href="html/app.html?page=login&amp;mode=signup">Start your logbook →</a><button class="btn btn-secondary" type="button" id="install-app" hidden>Install LogMate</button><a class="landing-text-link" href="html/app.html?page=login">Already have an account? Log in</a></div>
           <p class="install-help" id="install-help" hidden></p>
           <div class="landing-proof"><span>SARS-compliant logbooks</span><span>Smart trip notifications</span><span>Personal or business vehicles</span><span>Service history & reminders</span></div>
         </div>
@@ -154,9 +158,8 @@
           </article>
         </div>
       </section>
-      <footer class="landing-footer"><span>LogMate</span><span>A clearer road ahead.</span><a href="html/login.html?mode=signup">Create your free account →</a></footer>
+      <footer class="landing-footer"><span>LogMate</span><span>A clearer road ahead.</span><a href="html/app.html?page=login&amp;mode=signup">Create your free account →</a><nav class="landing-legal-links" aria-label="Legal policies"><a href="terms.html">Terms and Conditions</a><a href="privacy.html">Privacy Policy</a><a href="refund-policy.html">Refunds and cancellations</a></nav></footer>
     </main>
-    <script src="bootstrap-5.3.8-dist/js/bootstrap.bundle.min.js"></script>
     <script type="module" src="js/landing.js?v=2"></script>
   </body>
 </html>

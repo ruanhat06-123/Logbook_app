@@ -175,7 +175,7 @@ if (user) {
     btn.addEventListener("click", (e) => {
       const vehicleId = btn.getAttribute("data-fillup");
       // Navigate to logbook page with vehicle preselected via query param
-      window.location.href = `logbook.html?vehicle=${encodeURIComponent(vehicleId)}`;
+      globalThis.LogMateUI?.navigateTo(`app.html?page=logbook&vehicle=${encodeURIComponent(vehicleId)}`);
     });
   });
 
@@ -183,7 +183,7 @@ if (user) {
     btn.addEventListener("click", (e) => {
       const vehicleId = btn.getAttribute("data-log-trip");
       // Navigate to trip page with vehicle preselected via query param
-      window.location.href = `trip.html?vehicle=${encodeURIComponent(vehicleId)}`;
+      globalThis.LogMateUI?.navigateTo(`app.html?page=trip&vehicle=${encodeURIComponent(vehicleId)}`);
     });
   });
 

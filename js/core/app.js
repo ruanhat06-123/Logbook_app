@@ -211,7 +211,7 @@ function renderNav(active, user, subscriptionState, fleetContext) {
 async function requireAuth() {
   const { data } = await supabase.auth.getSession();
   if (!data.session) {
-    window.location.href = "login.html";
+    globalThis.LogMateUI?.navigateTo("app.html?page=login", { replace: true });
     return null;
   }
   return data.session.user;
@@ -236,7 +236,6 @@ async function shell(active, content) {
   const banner = isFleetDriver(fleetContext) ? "" : subscriptionBannerMarkup(subscriptionState);
 
   document.body.innerHTML = `<div class="app-shell"><aside class="sidebar navbar navbar-dark"><div data-nav></div></aside><main class="main container-fluid">${banner}${content}</main></div>`;
-  globalThis.LogMateUI?.finishLoading();
   renderNav(active, user, subscriptionState, fleetContext);
   enhanceBootstrapUI();
   const bootstrapObserver = new MutationObserver(enhanceBootstrapUI);
@@ -270,7 +269,7 @@ async function shell(active, content) {
         localStorage.removeItem("logmateBiometricCredential");
       } catch {}
       document.cookie = "logmate_email=; Max-Age=0; Path=/; SameSite=Lax";
-      window.location.href = "login.html";
+      globalThis.LogMateUI?.navigateTo("app.html?page=login", { replace: true });
     });
 
   // reload when a service is confirmed elsewhere in the app

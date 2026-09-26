@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow, noarchive" />
+    <meta name="theme-color" content="#0b3d52" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; form-action 'self'; object-src 'none'; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; script-src 'self' https://esm.sh https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/; worker-src 'self' blob:; frame-src 'self' https://www.google.com/recaptcha/; connect-src 'self' http://localhost:3000 https://logmate.co.za https://*.supabase.co https://*.openrouteservice.org https://api.openrouteservice.org https://*.payfast.co.za https://api.mapbox.com https://events.mapbox.com https://*.tiles.mapbox.com https://www.google.com https://www.gstatic.com; font-src 'self' data: https:; upgrade-insecure-requests; trusted-types default;" />
+    <title>LogMate</title>
+    <link rel="icon" type="image/svg+xml" href="../assets/logo.svg" />
+    <link rel="manifest" href="../manifest.json" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" crossorigin="anonymous" />
+    <link rel="stylesheet" href="../css/style.css?v=42" />
+    <script src="../js/core/pageTransitions.js?v=42" defer></script>
+    <script src="../js/core/env.js"></script>
+    <script type="module" src="../js/core/appRouter.js?v=42"></script>
+  </head>
+  <body>
+    <div id="app-root" aria-live="polite"></div>
+
+    <template id="login-view">
+      <main class="auth-page">
+        <section class="auth-intro">
+          <div class="brand"><img class="brand-mark" src="../assets/logo.svg" alt="" /> LogMate</div>
+          <div class="auth-copy">
+            <div class="auth-tag">A clearer road ahead</div>
+            <h1>Your car,<br />in context.</h1>
+            <p>Keep every fill-up, every kilometre, and the bigger picture in one quiet place.</p>
+          </div>
+          <div class="auth-tag">EST. 2026 / LogMate</div>
+        </section>
+        <section class="auth-form-side">
+          <div class="auth-box">
+            <div class="eyebrow">Welcome back</div>
+            <h2 id="form-title">Sign in to your logbook</h2>
+            <p id="form-description">Your driving data, ready when you are.</p>
+            <form id="auth-form">
+              <div class="form-grid auth-name-fields" id="name-fields" hidden>
+                <div class="field"><label for="first-name">First name</label><input id="first-name" type="text" placeholder="Enter first name" autocomplete="given-name" /></div>
+                <div class="field"><label for="surname">Surname</label><input id="surname" type="text" placeholder="Enter surname" autocomplete="family-name" /></div>
+              </div>
+              <div class="field"><label for="email">Email address</label><input id="email" type="email" placeholder="Enter email address" autocomplete="email" required /></div>
+              <div class="field">
+                <label for="password">Password</label>
+                <div class="password-field"><input id="password" type="password" placeholder="Enter password" minlength="1" aria-describedby="password-help" autocomplete="current-password" required /><button type="button" class="password-toggle" id="password-toggle" aria-controls="password" aria-label="Show password">Show</button></div>
+                <small id="password-help" class="field-help" hidden>Use at least 8 characters, including an uppercase letter, a lowercase letter, and a number.</small>
+              </div>
+              <div class="signup-human-check mb-3" id="signup-human-check" hidden><div id="recaptcha-widget" aria-label="Human verification"></div></div>
+              <input id="website" name="website" class="visually-hidden" type="text" tabindex="-1" autocomplete="off" aria-hidden="true" />
+              <button class="btn btn-primary" type="submit" id="submit-button">Sign in →</button>
+              <button class="btn btn-secondary" type="button" id="biometric-login" hidden>🔓 Sign in with biometrics</button>
+              <button class="auth-link" type="button" id="forgot-password" hidden>Forgot password?</button>
+              <button class="btn btn-secondary install-app-button" type="button" id="install-app" hidden>Install LogMate</button>
+              <p class="install-help" id="install-help" hidden></p>
+            </form>
+            <div class="auth-switch"><span id="switch-copy">New here?</span><button type="button" id="switch-mode">Create an account</button></div>
+            <p class="auth-legal-links">By using LogMate, you agree to our <a href="../terms.html">Terms and Conditions</a>. See our <a href="../privacy.html">Privacy Policy</a> and <a href="../refund-policy.html">Refund and Cancellation Policy</a>.</p>
+            <div class="notice" id="auth-notice" hidden></div>
+          </div>
+        </section>
+      </main>
+    </template>
+
+    <template id="reset-password-view">
+      <main class="auth-page">
+        <section class="auth-intro">
+          <div class="brand"><img class="brand-mark" src="../assets/logo.svg" alt="" /> LogMate</div>
+          <div class="auth-copy"><div class="auth-tag">Account recovery</div><h1>Back on<br />the road.</h1><p>Choose a new password for your LogMate account.</p></div>
+          <div class="auth-tag">EST. 2026 / LogMate</div>
+        </section>
+        <section class="auth-form-side">
+          <div class="auth-box">
+            <div class="eyebrow">Password reset</div><h2>Set a new password</h2>
+            <p>Use at least 8 characters, including an uppercase letter, a lowercase letter, and a number.</p>
+            <form id="reset-form">
+              <div class="field"><label for="reset-email">Email address</label><input id="reset-email" type="email" autocomplete="email" required /></div>
+              <div class="field"><label for="new-password">New password</label><div class="password-field"><input id="new-password" type="password" minlength="8" autocomplete="new-password" required /><button class="password-toggle" type="button" data-password-toggle="new-password" aria-label="Show new password">Show</button></div></div>
+              <div class="field"><label for="confirm-password">Confirm new password</label><div class="password-field"><input id="confirm-password" type="password" minlength="8" autocomplete="new-password" required /><button class="password-toggle" type="button" data-password-toggle="confirm-password" aria-label="Show password confirmation">Show</button></div></div>
+              <button class="btn btn-primary" type="submit" id="reset-button">Update password →</button>
+            </form>
+            <div class="notice" id="reset-notice" hidden></div>
+          </div>
+        </section>
+      </main>
+    </template>
+
+    <template id="checkout-view">
+      <main class="checkout-page"><section class="checkout-card" aria-labelledby="checkout-title">
+        <div class="eyebrow">LogMate / PayFast</div><h1 id="checkout-title">Payment update</h1>
+        <p id="checkout-message" class="row-sub">Checking your payment status…</p>
+        <div class="checkout-actions"><a class="btn btn-primary" href="settings.html">Return to Settings</a><a class="btn btn-secondary" href="dashboard.html">Open Logbook</a></div>
+        <p class="auth-legal-links"><a href="../terms.html">Terms and Conditions</a> · <a href="../privacy.html">Privacy Policy</a> · <a href="../refund-policy.html">Refunds and cancellations</a></p>
+      </section></main>
+    </template>
+
+    <template id="offline-view">
+      <main class="error-page"><div class="error-page-mark"><img src="../assets/logo.svg" alt="LogMate" /></div><p class="eyebrow">LogMate / offline</p><h1>You're offline.</h1>
+        <p class="error-page-copy">Your saved trips and vehicle data remain on this device. LogMate will reconnect and sync when a connection is available.</p>
+        <div class="error-page-actions"><button class="btn btn-primary" type="button" data-offline-back>← Go back</button><a class="btn btn-secondary" href="../index.html">Home</a></div>
+        <p class="row-sub" data-online-status role="status">Waiting for a connection…</p>
+      </main>
+    </template>
+
+    <template id="not-found-view">
+      <main class="error-page"><div class="error-page-mark"><img src="../assets/logo.svg" alt="LogMate" /></div><p class="eyebrow">LogMate / 404</p><h1>That road ends here.</h1><p class="error-page-copy">The page you requested may have moved, or the address may be incomplete.</p>
+        <div class="error-page-actions"><a class="btn btn-primary" href="../index.html">Back to LogMate</a><button class="btn btn-secondary" type="button" data-history-back>Go back</button></div>
+      </main>
+    </template>
+  </body>
+</html>

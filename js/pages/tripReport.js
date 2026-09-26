@@ -2,6 +2,7 @@
 import "../core/app.js";
 import { requestServiceNotifications, notifyServiceDue, restorePendingServiceReminders } from "../core/serviceReminder.js";
 import { computeAnalytics, getCachedAnalytics } from "../core/analytics.js";
+import { auditOdometerGaps, odometerAuditSummary } from "../core/odometerAudit.js";
 
 const user = await requireAuth();
 if (!user) throw new Error("Not authenticated");
@@ -40,6 +41,8 @@ try {
   const tripAnomalyById = new Map(
     (analyticsResult?.anomalies?.trips || []).map((a) => [String(a.tripId), a]),
   );
+  const odometerFindings = auditOdometerGaps(tripRows);
+  const odometerSummary = odometerAuditSummary(odometerFindings);
 
   const toISODate = (val) => {
     if (!val) return "";
@@ -126,6 +129,7 @@ try {
         <button id="filter-button" class="btn btn-primary">Update report ↗</button>
         <button id="download-button" class="btn btn-secondary">Download CSV ↓</button>
         <button id="sars-pdf-button" class="btn btn-secondary">${sarsExportAllowed ? "SARS PDF ↓" : "Buy SARS PDF export · R99"}</button>
+        <button id="share-button" class="btn btn-secondary" type="button">Share report</button>
         <button id="print-button" class="btn btn-secondary">Print report</button>
       </div>
       <div id="report-output"></div>
@@ -153,7 +157,9 @@ try {
   const printBtn = document.querySelector("#print-button");
   const downloadBtn = document.querySelector("#download-button");
   const sarsPdfBtn = document.querySelector("#sars-pdf-button");
+  const shareBtn = document.querySelector("#share-button");
   const taxYearBtn = document.querySelector("#tax-year-button");
+  let latestSarsDocumentHtml = null;
 
   if (!outputEl) {
     console.error("trip-report: missing #report-output element");
@@ -190,7 +196,7 @@ try {
       const businessPct = totalDistance > 0 ? ((business / totalDistance) * 100).toFixed(1) : "0.0";
 
       // Annual odometer summary per vehicle for the filtered period
-      const odometerSummary = vehicleRows.map((vehicle) => {
+      const annualOdometerSummary = vehicleRows.map((vehicle) => {
         const vehicleTrips = rows
           .filter((item) => normalizeId(item.vehicle_id) === normalizeId(vehicle.id))
           .sort((a, b) => toISODate(a.created_at).localeCompare(toISODate(b.created_at)));
@@ -249,7 +255,8 @@ try {
           <div class="total-box"><label>Business / personal</label><strong style="display:block">${business.toLocaleString()} / ${personal.toLocaleString()} km</strong></div>
           <div class="total-box"><label>Business use</label><strong style="display:block">${businessPct}%</strong></div>
         </div>
-        ${odometerSummary.length ? `<div class="notice" style="margin-bottom:12px"><strong>Annual odometer readings:</strong> ${odometerSummary.map((s) => `${s.plate}: ${s.opening.toLocaleString()} km → ${s.closing.toLocaleString()} km`).join(" · ")}</div>` : ""}
+        ${annualOdometerSummary.length ? `<div class="notice" style="margin-bottom:12px"><strong>Annual odometer readings:</strong> ${annualOdometerSummary.map((s) => `${s.plate}: ${s.opening.toLocaleString()} km → ${s.closing.toLocaleString()} km`).join(" · ")}</div>` : ""}
+        ${odometerSummary.hasBlockingFindings ? `<div class="notice app-status-warning" role="alert" style="margin-bottom:12px"><strong>Odometer review required before SARS export.</strong> ${odometerSummary.count} consecutive reading${odometerSummary.count === 1 ? "" : "s"} ${odometerSummary.count === 1 ? "does" : "do"} not line up. ${odometerSummary.gaps.length ? `${odometerSummary.gaps.length} gap${odometerSummary.gaps.length === 1 ? "" : "s"}` : ""}${odometerSummary.gaps.length && odometerSummary.overlaps.length ? " and " : ""}${odometerSummary.overlaps.length ? `${odometerSummary.overlaps.length} overlap${odometerSummary.overlaps.length === 1 ? "" : "s"}` : ""} must be corrected.</div>` : ""}
         ${rows.length ? `<div class="table-wrap"><table class="table">${tableHeader}<tbody>${rowsHtml}</tbody></table></div>` : `<div class="empty">No trips match this filter.</div>`}
       `;
     } catch (err) {
@@ -288,7 +295,7 @@ try {
       });
       const result = await response.json();
       if (!response.ok || !result.checkoutUrl) throw new Error(result.error || "Export checkout could not be started.");
-      window.location.href = result.checkoutUrl;
+      globalThis.LogMateUI?.navigateTo(result.checkoutUrl);
     } catch (err) {
       console.error("Export checkout failed:", err);
       window.alert(err.message || "Export checkout could not be started.");
@@ -312,6 +319,12 @@ try {
     const rows = filteredRows();
     if (!rows.length) {
       window.alert("No trips in the selected period to export.");
+      return;
+    }
+    const selectedOdometerFindings = auditOdometerGaps(rows);
+    if (selectedOdometerFindings.length) {
+      window.alert("Review and correct the consecutive odometer readings before exporting this SARS report.");
+      draw();
       return;
     }
     if (!sarsExportAllowed) {
@@ -409,6 +422,7 @@ try {
         This logbook records the trip date, opening and closing odometer readings, distance travelled, destination, and business reason for each trip, as required by the South African Revenue Service. Records must be retained for a minimum of five years from the date of submission of the relevant tax return.
       </div>
       </body></html>`;
+    latestSarsDocumentHtml = documentHtml;
 
     // Print via a hidden iframe — this does not depend on pop-up
     // permissions, so it works even when window.open is blocked.
@@ -443,6 +457,25 @@ try {
     };
 
     iframe.srcdoc = documentHtml;
+  });
+
+  shareBtn?.addEventListener("click", async () => {
+    if (!latestSarsDocumentHtml) {
+      window.alert("Generate the SARS report first, then share it from this page.");
+      return;
+    }
+    if (!navigator.share) {
+      window.alert("This device does not support the native share sheet. Use Print report and choose WhatsApp or Save as PDF.");
+      return;
+    }
+    const file = new File([latestSarsDocumentHtml], "logmate-sars-report.html", { type: "text/html" });
+    const shareData = { title: "LogMate SARS trip report", text: "LogMate SARS trip report", files: [file] };
+    try {
+      if (!navigator.canShare || navigator.canShare(shareData)) await navigator.share(shareData);
+      else await navigator.share({ title: shareData.title, text: shareData.text });
+    } catch (err) {
+      if (err.name !== "AbortError") window.alert("The report could not be shared from this device.");
+    }
   });
 
   downloadBtn?.addEventListener("click", () => {

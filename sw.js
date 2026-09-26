@@ -1,16 +1,19 @@
-const CACHE_NAME = "logmate-shell-v33";
-const OFFLINE_PAGE = "/html/offline.html";
+const CACHE_NAME = "logmate-shell-v42";
+const OFFLINE_PAGE = "/html/app.html?page=offline";
 
 const APP_SHELL = [
   "/",
   "/index.html",
+  "/terms.html",
+  "/privacy.html",
+  "/refund-policy.html",
   "/css/style.css",
   "/assets/logo.svg",
   "/manifest.json",
-  "/html/offline.html",
-  "/404.html",
+  "/html/app.html",
   // Core app modules
   "/js/landing.js",
+  "/js/core/appRouter.js",
   "/js/core/installPrompt.js",
   "/js/core/app.js",
   "/js/core/env.js",
@@ -24,8 +27,14 @@ const APP_SHELL = [
   "/js/core/tripUIIntegration.js",
   "/js/core/reportCache.js",
   "/js/core/analytics.js",
+  "/js/core/analyticsWorker.js",
+  "/js/core/odometerAudit.js",
+  "/js/core/dataBudget.js",
+  "/js/core/barcodeScanner.js",
   "/js/core/subscription.js",
   "/js/core/fleetAccess.js",
+    "/js/core/fuelPrice.js",
+    "/js/core/nativeBackgroundGeolocation.js",
   "/js/core/consent.js",
   "/js/core/pageTransitions.js",
   // Page modules
@@ -45,22 +54,6 @@ const APP_SHELL = [
   "/js/pages/analytics.js",
   "/js/pages/fleet.js",
   "/js/pages/drivers.js",
-  // HTML pages for offline access
-  "/html/login.html",
-  "/html/dashboard.html",
-  "/html/trip.html",
-  "/html/logbook.html",
-  "/html/vehicles.html",
-  "/html/add-vehicle.html",
-  "/html/trip-report.html",
-  "/html/report.html",
-  "/html/settings.html",
-  "/html/checkout.html",
-  "/html/help.html",
-  "/html/analytics.html",
-  "/html/reset-password.html",
-  "/html/fleet.html",
-  "/html/drivers.html",
 ];
 
 self.addEventListener("install", (event) => {
@@ -139,7 +132,7 @@ self.addEventListener("fetch", (event) => {
       fetch(event.request)
         .catch(() => {
           // Return offline page
-          return caches.match(OFFLINE_PAGE);
+          return caches.match(OFFLINE_PAGE, { ignoreSearch: true });
         })
     );
     return;
@@ -147,7 +140,7 @@ self.addEventListener("fetch", (event) => {
 
   // All other pages (HTML, assets): Cache-first strategy
   event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
+    caches.match(event.request, { ignoreSearch: true }).then((cachedResponse) => {
       if (cachedResponse) {
         return cachedResponse;
       }
@@ -171,10 +164,10 @@ self.addEventListener("fetch", (event) => {
         .catch(() => {
           // If it's an HTML page and not cached, show offline page
           if (event.request.destination === "document") {
-            return caches.match(OFFLINE_PAGE);
+            return caches.match(OFFLINE_PAGE, { ignoreSearch: true });
           }
           // For other resources, try cache or return error
-          return caches.match(event.request).then((cached) => {
+          return caches.match(event.request, { ignoreSearch: true }).then((cached) => {
             if (cached) return cached;
             // Return a 503 error response
             return new Response("Resource not available offline", {
@@ -201,7 +194,7 @@ self.addEventListener("notificationclick", (event) => {
         appWindow.focus();
         return appWindow.postMessage({ type: "end-live-trip" });
       }
-      return clients.openWindow("/html/trip.html");
+          return clients.openWindow("/html/app.html?page=trip");
     }));
     return;
   }
@@ -209,7 +202,7 @@ self.addEventListener("notificationclick", (event) => {
   // Service reminder notification: open the vehicles page
   if (tag.startsWith("service-")) {
     event.waitUntil(
-      clients.openWindow(targetUrl || "/html/vehicles.html")
+      clients.openWindow(targetUrl || "/html/app.html?page=vehicles")
     );
     return;
   }

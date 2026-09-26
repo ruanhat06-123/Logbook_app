@@ -5,7 +5,8 @@ import {
   restorePendingServiceReminders,
   serviceReminderMarkup,
 } from "../core/serviceReminder.js";
-import { getFleetContext, isFleetDriver } from "../core/fleetAccess.js";
+import { getFleetContext, isFleetAdmin, isFleetDriver } from "../core/fleetAccess.js";
+import { dataBudgetMessage, shouldDeferNetwork } from "../core/dataBudget.js";
 
 const user = await requireAuth();
 if (!user) throw new Error("Not authenticated");
@@ -13,15 +14,15 @@ const fleetContext = await getFleetContext(user);
 const driverView = isFleetDriver(fleetContext);
 const fleetOwner = isFleetAdmin(fleetContext);
 if (driverView) {
-  window.location.replace("dashboard.html");
+  globalThis.LogMateUI?.navigateTo("app.html?page=dashboard", { replace: true });
   throw new Error("Fleet drivers do not have access to the vehicle list");
 }
 
-const currentVehicles = (await vehicles()) || [];
-const { data: serviceRows = [] } = await supabase
-  .from("service_records")
-  .select("*, service_record_files(*)")
-  .order("service_date", { ascending: false });
+const { data: currentVehicles = [], error: vehicleError } = await supabase
+  .from("vehicles")
+  .select("id, number_plate, make, model, current_mileage, last_service_mileage, next_service_mileage")
+  .order("number_plate");
+if (vehicleError) console.error("Vehicle list fetch error:", vehicleError);
 const vehicleMarkup = currentVehicles.length
   ? currentVehicles.map((item) => {
       const nextService = Number(item.next_service_mileage);
@@ -74,9 +75,16 @@ currentVehicles.forEach(notifyServiceDue);
 restorePendingServiceReminders(currentVehicles);
 
 document.querySelectorAll("[data-service-history]").forEach((button) => {
-  button.addEventListener("click", () => {
+  button.addEventListener("click", async () => {
     const vehicle = currentVehicles.find((item) => String(item.id) === String(button.dataset.serviceHistory));
-    const records = serviceRows.filter((record) => String(record.vehicle_id) === String(vehicle.id));
+    button.disabled = true;
+    const { data: records = [], error: serviceError } = await supabase
+      .from("service_records")
+      .select("*, service_record_files(*)")
+      .eq("vehicle_id", vehicle.id)
+      .order("service_date", { ascending: false });
+    button.disabled = false;
+    if (serviceError) return window.alert(serviceError.message);
     const backdrop = document.createElement("div");
     backdrop.className = "modal-backdrop";
     backdrop.innerHTML = `<div class="modal service-modal" role="dialog" aria-modal="true" aria-labelledby="service-history-title"><div class="modal-head"><div><h2 id="service-history-title">${escapeHtml(vehicle.make || "Vehicle")} ${escapeHtml(vehicle.model || "")}</h2><div class="row-sub">Service history · ${escapeHtml(vehicle.number_plate || "")}</div></div><button class="modal-close" type="button" aria-label="Close">×</button></div><div class="service-record-list">${records.length ? records.map((record) => `<article class="service-record"><div class="service-record-head"><strong>${escapeHtml(record.title)}</strong><span>${escapeHtml(record.service_date || "")}</span></div><div class="row-sub">${record.mileage == null ? "Mileage not entered" : `${Number(record.mileage).toLocaleString()} km`}${record.invoice_amount == null ? "" : ` · R ${Number(record.invoice_amount).toFixed(2)}`}</div>${record.notes ? `<p>${escapeHtml(record.notes)}</p>` : ""}<div class="service-files">${(record.service_record_files || []).map((file) => `<button class="service-file" type="button" data-file-path="${escapeHtml(file.file_path)}">${escapeHtml(file.file_name)}</button>`).join("")}</div></article>`).join("") : '<div class="empty">No service history recorded yet.</div>'}</div><form id="service-record-form" class="form-grid"><div class="field"><label for="service-title">Service title</label><input id="service-title" placeholder="Annual service" required></div><div class="field"><label for="service-date">Date</label><input id="service-date" type="date" required></div><div class="field"><label for="service-mileage">Mileage (km)</label><input id="service-mileage" type="number" min="0"></div><div class="field"><label for="service-amount">Invoice amount (R)</label><input id="service-amount" type="number" min="0" step="0.01"></div><div class="field full"><label for="service-notes">Notes</label><textarea id="service-notes" rows="3" placeholder="Work completed, parts replaced, or warranty details"></textarea></div><div class="field full"><label for="service-files">Invoices or photos</label><input id="service-files" type="file" accept="image/*,.pdf" multiple><small class="field-help">You can upload photos, invoices, or both.</small></div><div class="form-actions field full"><button class="btn btn-secondary modal-cancel" type="button">Cancel</button><button class="btn btn-primary" type="submit">Save service record →</button></div></form></div>`;
@@ -113,6 +121,8 @@ document.querySelectorAll("[data-service-history]").forEach((button) => {
     backdrop.querySelector("#service-record-form").addEventListener("submit", async (event) => {
       event.preventDefault();
       const form = event.target;
+      const files = Array.from(form.querySelector("#service-files").files || []);
+      if (files.length && shouldDeferNetwork()) return window.alert(dataBudgetMessage("Invoice upload"));
       const { data: record, error } = await supabase.from("service_records").insert({
         user_id: user.id,
         vehicle_id: vehicle.id,
@@ -123,7 +133,6 @@ document.querySelectorAll("[data-service-history]").forEach((button) => {
         notes: form.querySelector("#service-notes").value.trim() || null,
       }).select().single();
       if (error) return window.alert(error.message);
-      const files = Array.from(form.querySelector("#service-files").files || []);
       for (const file of files) {
         const path = `${user.id}/${vehicle.id}/${crypto.randomUUID()}-${file.name}`;
         const upload = await supabase.storage.from("service-documents").upload(path, file, { upsert: false });

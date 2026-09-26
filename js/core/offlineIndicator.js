@@ -26,9 +26,6 @@ export function initializeOfflineDetection() {
   window.addEventListener("online", handleOnline);
   window.addEventListener("offline", handleOffline);
 
-  // Also poll periodically to catch network transitions
-  setInterval(checkConnectivity, 5000);
-
   log("Offline detection initialized");
 }
 
@@ -57,28 +54,6 @@ function handleOffline() {
 
   // Dispatch event for app to respond
   window.dispatchEvent(new CustomEvent("app-offline", { detail: { timestamp: Date.now() } }));
-}
-
-/**
- * Periodically verify connectivity
- * Detects network transitions that events might miss
- */
-async function checkConnectivity() {
-  try {
-    // Try a lightweight HEAD request
-    const response = await fetch("/manifest.json", { method: "HEAD", cache: "no-store" });
-    const wouldBeOnline = response.ok;
-
-    if (wouldBeOnline && !isOnline) {
-      handleOnline();
-    } else if (!wouldBeOnline && isOnline) {
-      handleOffline();
-    }
-  } catch (err) {
-    if (isOnline) {
-      handleOffline();
-    }
-  }
 }
 
 /**

@@ -21,12 +21,13 @@ import { initializeTripUI } from "../core/tripUIIntegration.js";
 import { initializeOfflineSync } from "../core/offlineSync.js";
 import { getLocalStore, setLocalStore } from "../core/localStore.js";
 import { auditIdentity, getFleetContext, isFleetAdmin } from "../core/fleetAccess.js";
+import { dataBudgetMessage, shouldDeferNetwork } from "../core/dataBudget.js";
 
 const user = await requireAuth();
 if (!user) throw new Error("Not authenticated");
 const fleetContext = await getFleetContext(user);
 if (isFleetAdmin(fleetContext)) {
-  window.location.replace("drivers.html");
+  globalThis.LogMateUI?.navigateTo("app.html?page=drivers", { replace: true });
   throw new Error("Fleet owners cannot log trips");
 }
 
@@ -529,6 +530,10 @@ if (user) {
   // ---------- Mapbox geocoding helpers ----------
   async function searchPlacesMapbox(query, limit = 8) {
     if (!MAPBOX_TOKEN) return [];
+    if (shouldDeferNetwork()) {
+      showLocationStatus(dataBudgetMessage("Map search"), true);
+      return [];
+    }
     try {
       const types = "address,poi,place,neighborhood";
       const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${encodeURIComponent(MAPBOX_TOKEN)}&autocomplete=true&limit=${limit}&types=${types}`;
@@ -667,6 +672,7 @@ if (user) {
   // ---------- Reverse geocode ----------
   async function reverseGeocodeMapbox(lat, lon) {
     if (!MAPBOX_TOKEN) return `${lat.toFixed(6)},${lon.toFixed(6)}`;
+    if (shouldDeferNetwork()) return `${lat.toFixed(6)},${lon.toFixed(6)}`;
     try {
       const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(lon)},${encodeURIComponent(lat)}.json?access_token=${encodeURIComponent(MAPBOX_TOKEN)}&limit=1`;
       const resp = await fetch(url);
@@ -752,6 +758,7 @@ if (user) {
   // ---------- ORS directions via server proxy ----------
   async function calculateDrivingDistanceKm(originCoordsArr, destCoordsArr) {
     if (!originCoordsArr || !destCoordsArr) throw new Error("Missing coordinates");
+    if (shouldDeferNetwork()) throw new Error(dataBudgetMessage("Route calculation"));
 
     const apiBase = window.__ENV?.VITE_API_URL || "https://logmate.co.za";
     try {
@@ -1459,7 +1466,7 @@ if (user) {
         window.alert(
           `Free tier is limited to ${FREE_TRIP_LIMIT} trips/month. Upgrade to Premium for unlimited trips.`,
         );
-        window.location.href = "settings.html#billing";
+        globalThis.LogMateUI?.navigateTo("app.html?page=settings#billing");
         return;
       }
 
