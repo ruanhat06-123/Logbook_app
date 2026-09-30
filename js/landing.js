@@ -30,7 +30,7 @@ const hasCachedAccount = () => {
 
 if (hasCachedAccount()) globalThis.LogMateUI?.navigateTo("html/app.html?page=login", { replace: true });
 
-const pricingCatalog = await fetch("pricing.json").then((response) => response.json());
+const pricingCatalog = await fetch("json/pricing.json").then((response) => response.json());
 const formatPrice = (amount, suffix) => `${pricingCatalog.currency} ${Number(amount).toLocaleString("en-ZA")} / ${suffix}`;
 const pricingCards = Object.entries(pricingCatalog.plans)
   .map(([tier, plan]) => `
