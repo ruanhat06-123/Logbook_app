@@ -211,24 +211,29 @@ The main Supabase tables are:
 - OpenRouteService key for server-side route requests.
 - PayFast credentials for billing flows.
 
-### PayFast Edge Functions
+### PayFast Express service
 
-The Premium monthly checkout and cancellation flow lives in `supabase/functions/`.
-Set these secrets in the Supabase project; never place them in `js/core/env.js` or
-any other browser-loaded file:
+For the standalone Express PayFast service, run `cd server && npm install && npm start`.
+Configure `PUBLIC_API_URL` to the deployed Render/Railway service URL and set the
+frontend `VITE_PAYFAST_API_URL` in `js/core/env.js` to that same public URL.
 
-```bash
-supabase secrets set \
-	PAYFAST_MERCHANT_ID=... \
-	PAYFAST_MERCHANT_KEY=... \
-	PAYFAST_PASSPHRASE=... \
-	SUPABASE_SERVICE_ROLE_KEY=...
+Set these server-only environment variables in Render/Railway; never place the
+merchant credentials or service-role key in `js/core/env.js` or any browser-loaded file:
+
+```text
+SUPABASE_URL
+SUPABASE_SERVICE_ROLE_KEY
+PAYFAST_MERCHANT_ID
+PAYFAST_MERCHANT_KEY
+PAYFAST_PASSPHRASE
+PAYFAST_API_URL
+PAYFAST_SANDBOX
+PUBLIC_API_URL
 ```
 
-`SUPABASE_URL`, `SUPABASE_ANON_KEY`, and the PayFast API URL use the Supabase
-runtime defaults and the cancellation function's default `https://api.payfast.co.za`.
-Deploy both functions with `supabase functions deploy generate-payfast-signature`
-and `supabase functions deploy cancel-payfast-subscription`.
+Use `PAYFAST_SANDBOX=true` locally and `false` in production with live credentials.
+The previous Supabase functions can remain deployed temporarily, but the frontend
+no longer calls them.
 
 ### Frontend
 

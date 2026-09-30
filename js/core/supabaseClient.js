@@ -1,8 +1,8 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-export const supabaseUrl =
-  window.SUPABASE_URL || "https://kvfssjjryzwjgulqjvws.supabase.co";
-export const supabaseAnonKey =
-  window.SUPABASE_ANON_KEY ||
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt2ZnNzampyeXp3amd1bHFqdndzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc1ODg3NTEsImV4cCI6MjEwMzE2NDc1MX0.cmRR-RKwejeC1cSteJCUcpcSJxvIt0lZ6a7eqrZa9TY";
+export const supabaseUrl = window.SUPABASE_URL || window.__ENV?.SUPABASE_URL;
+export const supabaseAnonKey = window.SUPABASE_ANON_KEY || window.__ENV?.SUPABASE_ANON_KEY;
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error("Supabase public configuration is missing. Set SUPABASE_URL and SUPABASE_ANON_KEY in js/core/env.js.");
+}
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);

@@ -1,11 +1,9 @@
-import { supabase, supabaseAnonKey, supabaseUrl } from "./supabaseClient.js";
+import { supabase } from "./supabaseClient.js";
 
 const PAYFAST_CHECKOUT_URL = ["localhost", "127.0.0.1"].includes(window.location.hostname)
   ? "https://sandbox.payfast.co.za/eng/process"
   : "https://www.payfast.co.za/eng/process";
-const SUPABASE_FUNCTIONS_BASE_URL =
-  globalThis.SUPABASE_FUNCTIONS_URL ||
-  `${supabaseUrl || "https://[YOUR_SUPABASE_PROJECT_ID].supabase.co"}/functions/v1`;
+const PAYFAST_API_URL = (globalThis.__ENV?.VITE_PAYFAST_API_URL || globalThis.__ENV?.VITE_API_URL || "https://[YOUR_NODE_API_URL]").replace(/\/$/, "");
 
 function setNotice(element, message, isError = false) {
   if (!element) return;
@@ -42,25 +40,28 @@ function renderCancellation(target) {
     <div class="notice" data-payfast-notice hidden></div>`;
 }
 
-async function generatePayment(form, notice) {
+export async function handleCheckout(userId, email) {
+  const form = document.querySelector("[data-payfast-upgrade-form]");
+  const notice = document.querySelector("[data-payfast-notice]");
+  if (!form) throw new Error("Checkout form is not available.");
   const button = form.querySelector("button");
   button.disabled = true;
   button.textContent = "Preparing secure checkout...";
   try {
     const accessToken = await getAccessToken();
-    const response = await fetch(`${SUPABASE_FUNCTIONS_BASE_URL}/generate-payfast-signature`, {
+    const response = await fetch(`${PAYFAST_API_URL}/api/checkout`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${accessToken}`,
-        apikey: supabaseAnonKey,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ originUrl: window.location.origin }),
+      body: JSON.stringify({ userId, email, originUrl: window.location.origin }),
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || "Checkout signature request failed.");
     if (!data?.signature || !data?.paymentData) throw new Error("Checkout parameters were not returned.");
 
+    form.action = data.checkoutUrl || PAYFAST_CHECKOUT_URL;
     Object.entries({ ...data.paymentData, signature: data.signature }).forEach(([name, value]) => {
       const input = document.createElement("input");
       input.type = "hidden";
@@ -83,11 +84,10 @@ async function cancelSubscription(button, notice) {
   button.textContent = "Cancelling...";
   try {
     const accessToken = await getAccessToken();
-    const response = await fetch(`${SUPABASE_FUNCTIONS_BASE_URL}/cancel-payfast-subscription`, {
+    const response = await fetch(`${PAYFAST_API_URL}/api/cancel`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${accessToken}`,
-        apikey: supabaseAnonKey,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({}),
@@ -127,7 +127,7 @@ export async function initPayfastSubscription(target) {
     renderUpgrade(target);
     target.querySelector("[data-payfast-upgrade-form]").addEventListener("submit", (event) => {
       event.preventDefault();
-      generatePayment(event.currentTarget, target.querySelector("[data-payfast-notice]"));
+      handleCheckout(sessionData.session.user.id, sessionData.session.user.email);
     });
   } catch (error) {
     console.error("PayFast subscription UI failed:", error);
