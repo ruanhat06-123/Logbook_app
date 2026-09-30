@@ -206,7 +206,7 @@ app.patch("/api/fleet/drivers/:driverId", async (req, res) => {
 });
 
 /** Apply a successful payment to a user's subscription row. */
-async function applySuccessfulPayment({ userId, tier, billingCycle, amount }) {
+async function applySuccessfulPayment({ userId, tier, billingCycle, amount, payfastToken }) {
   if (!supabaseAdmin) return;
   const expiry = new Date();
   expiry.setMonth(expiry.getMonth() + 1);
@@ -218,6 +218,7 @@ async function applySuccessfulPayment({ userId, tier, billingCycle, amount }) {
       subscription_expiry_date: expiry.toISOString().slice(0, 10),
       payment_status: "active",
       billing_cycle: billingCycle,
+      ...(payfastToken ? { payfast_token: payfastToken } : {}),
     })
     .eq("id", userId);
 
@@ -480,7 +481,7 @@ app.post("/api/webhooks/payfast", express.urlencoded({ extended: false }), async
       if (tier === "sars_export") {
         await applySuccessfulExportPayment({ userId, amount });
       } else {
-        await applySuccessfulPayment({ userId, tier, billingCycle, amount });
+        await applySuccessfulPayment({ userId, tier, billingCycle, amount, payfastToken: body.token });
       }
     } else if (body.payment_status === "FAILED") {
       if (tier === "sars_export") {

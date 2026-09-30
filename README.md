@@ -211,6 +211,25 @@ The main Supabase tables are:
 - OpenRouteService key for server-side route requests.
 - PayFast credentials for billing flows.
 
+### PayFast Edge Functions
+
+The Premium monthly checkout and cancellation flow lives in `supabase/functions/`.
+Set these secrets in the Supabase project; never place them in `js/core/env.js` or
+any other browser-loaded file:
+
+```bash
+supabase secrets set \
+	PAYFAST_MERCHANT_ID=... \
+	PAYFAST_MERCHANT_KEY=... \
+	PAYFAST_PASSPHRASE=... \
+	SUPABASE_SERVICE_ROLE_KEY=...
+```
+
+`SUPABASE_URL`, `SUPABASE_ANON_KEY`, and the PayFast API URL use the Supabase
+runtime defaults and the cancellation function's default `https://api.payfast.co.za`.
+Deploy both functions with `supabase functions deploy generate-payfast-signature`
+and `supabase functions deploy cancel-payfast-subscription`.
+
 ### Frontend
 
 Serve the repository root with a static HTTPS-capable development server. The app is not a traditional bundler project; its pages load native ES modules directly.

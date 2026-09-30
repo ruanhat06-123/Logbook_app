@@ -2,6 +2,7 @@ import "../core/app.js";
 import { setupTermsConsent } from "../core/consent.js";
 import { getFleetContext, isFleetDriver } from "../core/fleetAccess.js";
 import { isDataBudgetModeEnabled, setDataBudgetMode } from "../core/dataBudget.js";
+import { initPayfastSubscription } from "../core/payfastSubscription.js";
 
 const user = await requireAuth();
 if (!user) throw new Error("Not authenticated");
@@ -27,16 +28,6 @@ const PLANS = Object.entries(pricingCatalog.plans).map(([tier, plan]) =>
     features: plan.features || [],
   }),
 );
-const planButtons = PLANS.map(
-  (plan) =>
-    `<article class="billing-plan${subscriptionState.tier === plan.tier ? " billing-plan-current" : ""}">
-      <div class="billing-plan-heading"><h3>${escapeHtml(plan.label)}</h3><strong>${escapeHtml(plan.price)}</strong></div>
-      <p class="billing-plan-caption">Includes:</p>
-      <ul class="billing-plan-features">${plan.features.map((feature) => `<li>${escapeHtml(feature)}</li>`).join("")}</ul>
-      <button class="btn btn-secondary" type="button" data-checkout-tier="${plan.tier}" data-checkout-cycle="${plan.cycle}">${subscriptionState.tier === plan.tier ? "Renew or manage" : `Choose ${escapeHtml(plan.label)}`}</button>
-    </article>`,
-).join("");
-
 await shell("settings", `
   <style>
     .settings-category-nav { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
@@ -88,8 +79,8 @@ await shell("settings", `
         <strong>You are currently paying for:</strong>
         <ul class="billing-plan-features">${(subscriptionState.tier === "free" ? freeFeatures : pricingCatalog.plans[subscriptionState.tier]?.features || []).map((feature) => `<li>${escapeHtml(feature)}</li>`).join("")}</ul>
       </div>
-      <p class="row-sub">Choose a plan below to compare exactly what it includes. Premium and Fleet include SARS PDF exports; Free users can buy one for R${Number(pricingCatalog.sarsExport?.price || 99).toFixed(0)}.</p>
-      <div class="billing-plan-grid">${planButtons}</div>
+      <p class="row-sub">Premium includes unlimited trip records, SARS PDF exports, smart analytics, and secure sync.</p>
+      <div id="payfast-subscription" class="billing-current-summary"></div>
       <div id="billing-notice" class="notice" hidden></div>
     </section>`}
     <section class="card" data-settings-section="appearance">
@@ -186,6 +177,7 @@ await shell("settings", `
 `);
 
 setupTermsConsent();
+await initPayfastSubscription(document.querySelector("#payfast-subscription"));
 
 const settingsCategoryButtons = [...document.querySelectorAll("[data-settings-category]")];
 const settingsSections = [...document.querySelectorAll("[data-settings-section]")];
@@ -540,76 +532,3 @@ document.querySelector("#password-form").addEventListener("submit", async (event
 if (window.location.hash === "#billing") {
   document.querySelector("#billing")?.scrollIntoView({ block: "start" });
 }
-
-async function startCheckout({ tier, cycle, button }) {
-  setButtonBusy(button, true, "Opening secure checkout…");
-  showNotice("billing-notice", "Redirecting to secure checkout...");
-  try {
-    const apiBase = window.__ENV?.VITE_API_URL || "https://logmate.co.za";
-    const requestCheckout = async (accessToken) => {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 15000);
-      try {
-        return await fetch(`${apiBase}/api/billing/checkout`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${accessToken}`,
-          },
-          body: JSON.stringify({ tier, billingCycle: cycle }),
-          signal: controller.signal,
-        });
-      } finally {
-        clearTimeout(timeout);
-      }
-    };
-
-    let { data: sessionData } = await supabase.auth.getSession();
-    if (!sessionData.session?.access_token) {
-      const refreshed = await supabase.auth.refreshSession();
-      sessionData = refreshed.data;
-    }
-    if (!sessionData.session?.access_token) {
-      throw new Error("Your session has expired. Sign in again before choosing a plan.");
-    }
-
-    let response = await requestCheckout(sessionData.session.access_token);
-    if (response.status === 401) {
-      const refreshed = await supabase.auth.refreshSession();
-      if (!refreshed.data.session?.access_token) {
-        globalThis.LogMateUI?.navigateTo("app.html?page=login", { replace: true });
-        return;
-      }
-      response = await requestCheckout(refreshed.data.session.access_token);
-      if (response.status === 401) {
-        await supabase.auth.signOut();
-        globalThis.LogMateUI?.navigateTo("app.html?page=login&reason=session-expired", { replace: true });
-        return;
-      }
-    }
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok || !result.checkoutUrl) {
-      throw new Error(result.error || "Checkout could not be started.");
-    }
-    globalThis.LogMateUI?.navigateTo(result.checkoutUrl);
-  } catch (err) {
-    console.error("Checkout failed:", err);
-    const isLocal = ["localhost", "127.0.0.1"].includes(window.location.hostname);
-    const message = err.name === "AbortError"
-      ? "The billing service took too long to respond. Try again shortly."
-      : err instanceof TypeError && isLocal
-        ? "The local billing API is not running. Start it with `npm install` and `npm start`, then try again."
-        : err instanceof TypeError
-          ? "The production billing API could not be reached. Confirm that the API is deployed at https://logmate.co.za."
-          : err.message;
-    showNotice("billing-notice", `Could not start checkout: ${message}`, true);
-  } finally {
-    setButtonBusy(button, false);
-  }
-}
-
-document.querySelectorAll("[data-checkout-tier]").forEach((btn) => {
-  btn.addEventListener("click", () =>
-    startCheckout({ tier: btn.dataset.checkoutTier, cycle: btn.dataset.checkoutCycle, button: btn }),
-  );
-});
