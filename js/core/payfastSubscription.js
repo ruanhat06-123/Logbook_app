@@ -1,6 +1,8 @@
 import { supabase, supabaseAnonKey, supabaseUrl } from "./supabaseClient.js";
 
-const SANDBOX_CHECKOUT_URL = "https://sandbox.payfast.co.za/eng/process";
+const PAYFAST_CHECKOUT_URL = ["localhost", "127.0.0.1"].includes(window.location.hostname)
+  ? "https://sandbox.payfast.co.za/eng/process"
+  : "https://www.payfast.co.za/eng/process";
 const SUPABASE_FUNCTIONS_BASE_URL =
   globalThis.SUPABASE_FUNCTIONS_URL ||
   `${supabaseUrl || "https://[YOUR_SUPABASE_PROJECT_ID].supabase.co"}/functions/v1`;
@@ -26,7 +28,7 @@ function renderUpgrade(target) {
   target.innerHTML = `
     <div class="billing-plan-heading"><h3>Premium monthly</h3><strong>R99/mo</strong></div>
     <p class="row-sub">Unlimited trip records, SARS-ready exports, smart analytics, and secure sync.</p>
-    <form data-payfast-upgrade-form method="post" action="${SANDBOX_CHECKOUT_URL}" accept-charset="UTF-8">
+    <form data-payfast-upgrade-form method="post" action="${PAYFAST_CHECKOUT_URL}" accept-charset="UTF-8">
       <button class="btn btn-primary" type="submit">Upgrade to Premium (R99/mo)</button>
     </form>
     <div class="notice" data-payfast-notice hidden></div>`;
