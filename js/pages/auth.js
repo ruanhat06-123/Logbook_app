@@ -445,12 +445,23 @@ form.addEventListener("submit", async (event) => {
       await ensureRecaptcha();
       const recaptchaToken = window.grecaptcha.getResponse(recaptchaWidgetId);
       if (!recaptchaToken) throw new Error("Please complete the ‘I’m not a robot’ check.");
-      const apiBase = String(window.__ENV?.VITE_API_URL || "").replace(/\/$/, "");
-      const verificationResponse = await fetch(`${apiBase}/api/recaptcha/verify`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: recaptchaToken }),
-      });
+      const configuredApiBase = String(window.__ENV?.VITE_API_URL || "").replace(/\/$/, "");
+      const apiBases = [...new Set([configuredApiBase, "https://logmate.co.za"].filter(Boolean))];
+      let verificationResponse;
+      let lastNetworkError;
+      for (const apiBase of apiBases) {
+        try {
+          verificationResponse = await fetch(`${apiBase}/api/recaptcha/verify`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ token: recaptchaToken }),
+          });
+          break;
+        } catch (error) {
+          lastNetworkError = error;
+        }
+      }
+      if (!verificationResponse) throw lastNetworkError || new Error("Human verification service is unavailable.");
       const verification = await verificationResponse.json().catch(() => null);
       if (!verificationResponse.ok || !verification?.success) {
         window.grecaptcha.reset(recaptchaWidgetId);
