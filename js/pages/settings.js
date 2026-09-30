@@ -28,6 +28,22 @@ const PLANS = Object.entries(pricingCatalog.plans).map(([tier, plan]) =>
     features: plan.features || [],
   }),
 );
+const planCards = [
+  {
+    tier: "free",
+    label: "Free",
+    price: "R0/mo",
+    features: freeFeatures,
+  },
+  ...PLANS,
+].map((plan) => `
+  <article class="billing-plan${subscriptionState.tier === plan.tier ? " billing-plan-current" : ""}">
+    <div class="billing-plan-heading"><h3>${escapeHtml(plan.label)}</h3><strong>${escapeHtml(plan.price)}</strong></div>
+    ${subscriptionState.tier === plan.tier ? '<p class="billing-plan-caption"><strong>Current plan</strong></p>' : ""}
+    <ul class="billing-plan-features">${plan.features.map((feature) => `<li>${escapeHtml(feature)}</li>`).join("")}</ul>
+  </article>
+`).join("");
+
 await shell("settings", `
   <style>
     .settings-category-nav { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
@@ -79,7 +95,8 @@ await shell("settings", `
         <strong>You are currently paying for:</strong>
         <ul class="billing-plan-features">${(subscriptionState.tier === "free" ? freeFeatures : pricingCatalog.plans[subscriptionState.tier]?.features || []).map((feature) => `<li>${escapeHtml(feature)}</li>`).join("")}</ul>
       </div>
-      <p class="row-sub">Premium includes unlimited trip records, SARS PDF exports, smart analytics, and secure sync.</p>
+      <p class="row-sub">Compare every LogMate plan below. Premium checkout and cancellation are handled securely through PayFast.</p>
+      <div class="billing-plan-grid">${planCards}</div>
       <div id="payfast-subscription" class="billing-current-summary"></div>
       <div id="billing-notice" class="notice" hidden></div>
     </section>`}
