@@ -310,6 +310,7 @@ const smartSettingFields = [
 ];
 smartSettingFields.forEach(([selector, key, fallback, min, max]) => {
   const input = document.querySelector(selector);
+  if (!input) return;
   const stored = Number(localStorage.getItem(key));
   input.value = Number.isFinite(stored) && stored >= min && stored <= max ? stored : fallback;
   input.addEventListener("change", () => {
@@ -330,6 +331,7 @@ const analyticsSettingFields = [
 ];
 analyticsSettingFields.forEach(([selector, key, fallback, min, max]) => {
   const input = document.querySelector(selector);
+  if (!input) return;
   const stored = Number(localStorage.getItem(key));
   input.value = Number.isFinite(stored) && stored >= min && stored <= max ? stored : fallback;
   input.addEventListener("change", () => {

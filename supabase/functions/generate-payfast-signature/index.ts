@@ -43,7 +43,9 @@ function validateOrigin(value: unknown) {
 }
 
 Deno.serve(async (request) => {
-  if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (request.method === "OPTIONS") {
+    return new Response(null, { status: 200, headers: corsHeaders });
+  }
   if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
   try {
@@ -71,7 +73,7 @@ Deno.serve(async (request) => {
       email_address: userData.user.email || "",
       amount: "99.00",
       recurring_amount: "99.00",
-      billing_date: new Date().toISOString().slice(0, 10),
+      billing_date: new Date().toISOString().split("T")[0],
       item_name: "Monthly Premium Logbook Plan",
       m_payment_id: userId,
       subscription_type: "1",
