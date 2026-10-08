@@ -2139,6 +2139,9 @@ h3 {
   color: #a85c28;
   background: #fff0e6;
 }
+.signout-mobile {
+  display: none;
+}
 @media (max-width: 900px) {
   .app-shell {
     grid-template-columns: 1fr;
@@ -2150,6 +2153,15 @@ h3 {
   }
   .brand {
     padding: 0 4px 14px;
+    display: flex;
+    align-items: center;
+  }
+  .signout-mobile {
+    display: inline-block;
+    width: auto;
+    margin: 0 0 0 auto;
+    padding: 6px 12px;
+    font-size: 0.85rem;
   }
   .nav-label,
   .sidebar-footer {

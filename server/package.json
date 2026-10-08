@@ -2,11 +2,10 @@
   "name": "logmate-api-server",
   "version": "1.0.0",
   "private": true,
-  "description": "ORS proxy + PayFast subscription billing (checkout/webhook) for LogMate",
-  "main": "server.js",
+  "description": "ORS proxy + Paystack subscription billing (webhook/cancel) for LogMate",
+  "main": "api-server.js",
   "scripts": {
-    "start": "node server.js",
-    "start:legacy": "node api-server.js"
+    "start": "node api-server.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",

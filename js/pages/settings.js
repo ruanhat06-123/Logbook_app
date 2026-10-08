@@ -2,7 +2,7 @@ import "../core/app.js";
 import { setupTermsConsent } from "../core/consent.js";
 import { getFleetContext, isFleetDriver } from "../core/fleetAccess.js";
 import { isDataBudgetModeEnabled, setDataBudgetMode } from "../core/dataBudget.js";
-import { initPayfastSubscription } from "../core/payfastSubscription.js";
+import { initBilling } from "../core/billing.js";
 
 const user = await requireAuth();
 if (!user) throw new Error("Not authenticated");
@@ -95,9 +95,9 @@ await shell("settings", `
         <strong>You are currently paying for:</strong>
         <ul class="billing-plan-features">${(subscriptionState.tier === "free" ? freeFeatures : pricingCatalog.plans[subscriptionState.tier]?.features || []).map((feature) => `<li>${escapeHtml(feature)}</li>`).join("")}</ul>
       </div>
-      <p class="row-sub">Compare every LogMate plan below. Premium checkout and cancellation are handled securely through PayFast.</p>
+      <p class="row-sub">Compare every LogMate plan below. Choose a plan below to subscribe. Checkout and payment are handled securely by Paystack.</p>
       <div class="billing-plan-grid">${planCards}</div>
-      <div id="payfast-subscription" class="billing-current-summary"></div>
+      <div id="billing-checkout" class="billing-current-summary"></div>
       <div id="billing-notice" class="notice" hidden></div>
     </section>`}
     <section class="card" data-settings-section="appearance">
@@ -194,7 +194,7 @@ await shell("settings", `
 `);
 
 setupTermsConsent();
-await initPayfastSubscription(document.querySelector("#payfast-subscription"));
+await initBilling(document.querySelector("#billing-checkout"), pricingCatalog);
 
 const settingsCategoryButtons = [...document.querySelectorAll("[data-settings-category]")];
 const settingsSections = [...document.querySelectorAll("[data-settings-section]")];

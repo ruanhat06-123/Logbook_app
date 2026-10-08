@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="robots" content="noindex, nofollow, noarchive" />
     <meta name="theme-color" content="#0b3d52" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; form-action 'self'; object-src 'none'; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; script-src 'self' https://esm.sh https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/; worker-src 'self' blob:; frame-src 'self' https://www.google.com/recaptcha/; connect-src 'self' http://localhost:3000 http://localhost:3001 http://127.0.0.1:3001 https://logmate.co.za https://*.supabase.co https://*.openrouteservice.org https://api.openrouteservice.org https://*.payfast.co.za https://api.mapbox.com https://events.mapbox.com https://*.tiles.mapbox.com https://www.google.com https://www.gstatic.com; font-src 'self' data: https:; upgrade-insecure-requests; trusted-types default;" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; form-action 'self'; object-src 'none'; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; script-src 'self' https://esm.sh https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/; worker-src 'self' blob:; frame-src 'self' https://www.google.com/recaptcha/; connect-src 'self' http://localhost:3000 http://127.0.0.1:3000 http://localhost:3001 http://127.0.0.1:3001 https://logmate.co.za https://*.supabase.co wss://*.supabase.co https://*.openrouteservice.org https://api.openrouteservice.org https://api.mapbox.com https://events.mapbox.com https://*.tiles.mapbox.com https://www.google.com https://www.gstatic.com; font-src 'self' data: https:; upgrade-insecure-requests; trusted-types default;" />
     <title>LogMate</title>
     <link rel="icon" type="image/svg+xml" href="../assets/logo.svg" />
     <link rel="manifest" href="../manifest.json" />
@@ -86,7 +86,7 @@
 
     <template id="checkout-view">
       <main class="checkout-page"><section class="checkout-card" aria-labelledby="checkout-title">
-        <div class="eyebrow">LogMate / PayFast</div><h1 id="checkout-title">Payment update</h1>
+        <div class="eyebrow">LogMate / Paystack</div><h1 id="checkout-title">Payment update</h1>
         <p id="checkout-message" class="row-sub">Checking your payment status…</p>
         <div class="checkout-actions"><a class="btn btn-primary" href="settings.html">Return to Settings</a><a class="btn btn-secondary" href="dashboard.html">Open Logbook</a></div>
         <p class="auth-legal-links"><a href="../terms.html">Terms and Conditions</a> · <a href="../privacy.html">Privacy Policy</a> · <a href="../refund-policy.html">Refunds and cancellations</a></p>

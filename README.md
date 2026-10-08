@@ -86,7 +86,8 @@ Available on Fleet Starter and Fleet Pro tiers.
 
 ### Authentication and account security
 
-- Supabase email/password sign-up and sign-in.
+- Supabase email/password sign-up and sign-in, with reCAPTCHA human verification on sign-up.
+- Sign out from the sidebar on desktop and from the header button on mobile.
 - Password reset by email.
 - Password validation and account details management.
 - Optional WebAuthn platform authentication using fingerprint or face unlock where supported.
@@ -101,8 +102,8 @@ Supported tiers are `free`, `premium`, `fleet_starter`, and `fleet_pro`.
 - Free tier with a configurable monthly trip limit.
 - Premium access to Smart Analytics and SARS PDF exports.
 - Fleet Starter and Fleet Pro access to fleet dashboards and driver management.
-- PayFast checkout with signed payment redirects.
-- PayFast webhook validation for successful and failed payments.
+- Paystack payment-page checkout (one link per tier) tagged with the signed-in user.
+- Paystack webhook (`charge.success`, `subscription.create`, `invoice.update`) verified with HMAC SHA512 and applied with the Supabase service role.
 - Subscription expiry and payment-status handling.
 - In-app warnings for expiring subscriptions and failed payments.
 - Paid SARS export credits for eligible Free-tier users, consumed server-side after verified payment.
@@ -123,6 +124,7 @@ Supported tiers are `free`, `premium`, `fleet_starter`, and `fleet_pro`.
 ### Native mobile support
 
 - Capacitor Android and iOS projects are included.
+- The native app calls the production API (`https://logmate.co.za`) instead of `localhost`; the API accepts `capacitor://localhost` and `ionic://localhost` origins.
 - Native background geolocation support for active trips and Smart Trips monitoring.
 - Native location notifications and wake-lock handling where supported.
 - Android debug installation and Android Studio workflows.
@@ -134,7 +136,7 @@ Supported tiers are `free`, `premium`, `fleet_starter`, and `fleet_pro`.
 - Authentication and database: Supabase Auth, Postgres, RLS, and Storage.
 - Maps: Mapbox GL and Mapbox Geocoding API.
 - Routing: OpenRouteService through the server proxy, with Mapbox fallback.
-- Billing: PayFast checkout and ITN webhooks.
+- Billing: Paystack payment pages and webhooks.
 - Backend: Node.js and Express.
 - Mobile packaging: Capacitor.
 - Local storage: IndexedDB with localStorage fallback.
@@ -152,7 +154,7 @@ html/app.html              Single HTML entry for the application views
 js/landing.js              Landing page behavior
 js/core/                   Shared routing, auth, storage, GPS, analytics, reports, and billing logic
 js/pages/                  Page-specific controllers
-server/api-server.js       ORS proxy, fuel API, checkout, and PayFast webhook server
+server/api-server.js       ORS proxy, fuel API, fleet APIs, and Paystack webhook/cancel routes
 server/sql/                Supabase migrations and billing SQL
 scripts/capacitor-build.mjs Web asset sync for Capacitor
 capacitor/www/             Generated web bundle for native apps
@@ -209,31 +211,25 @@ The main Supabase tables are:
 - HTTPS or `localhost` for geolocation, notifications, and WebAuthn.
 - Mapbox token for maps and geocoding.
 - OpenRouteService key for server-side route requests.
-- PayFast credentials for billing flows.
+- Paystack account with the three payment pages and a webhook URL.
 
-### PayFast Express service
+### Paystack billing
 
-For the standalone Express PayFast service, run `cd server && npm install && npm start`.
-Configure `PUBLIC_API_URL` to the deployed Render/Railway service URL and set the
-frontend `VITE_PAYFAST_API_URL` in `js/core/env.js` to that same public URL.
+Run `server/sql/paystack.sql` once in the Supabase SQL editor. In the Paystack dashboard:
 
-Set these server-only environment variables in Render/Railway; never place the
-merchant credentials or service-role key in `js/core/env.js` or any browser-loaded file:
+- Set the webhook URL to `https://logmate.co.za/api/webhooks/paystack`.
+- Set each payment page's redirect URL to `https://logmate.co.za/html/app.html?page=checkout&status=success`.
+- Optionally add a "User ID" custom field (variable `user_id`) to each page. Without it, payments are matched to accounts by the customer email, so users must pay with their LogMate email.
+
+Tier links live in `js/core/billing.js` and `server/paystack.js`. Set these server-only environment variables; never place them in `js/core/env.js`:
 
 ```text
 SUPABASE_URL
 SUPABASE_SERVICE_ROLE_KEY
-PAYFAST_MERCHANT_ID
-PAYFAST_MERCHANT_KEY
-PAYFAST_PASSPHRASE
-PAYFAST_API_URL
-PAYFAST_SANDBOX
-PUBLIC_API_URL
+PAYSTACK_SECRET_KEY
 ```
 
-Use `PAYFAST_SANDBOX=true` locally and `false` in production with live credentials.
-The previous Supabase functions can remain deployed temporarily, but the frontend
-no longer calls them.
+Start the API with `cd server && npm install && npm start`. Sign-up also requires `RECAPTCHA_SECRET_KEY` on the server, and the reCAPTCHA site key must allow the `logmate.co.za` and `localhost` domains.
 
 ### Frontend
 
@@ -262,12 +258,13 @@ The server provides:
 - `GET /api/health`
 - `GET /api/fuel-prices`
 - `POST /api/ors/directions`
-- `POST /api/billing/checkout`
+- `POST /api/recaptcha/verify`
+- `POST /api/cancel`
 - `POST /api/billing/consume-export`
-- `POST /api/webhooks/payfast`
+- `POST /api/webhooks/paystack`
 - Fleet driver management endpoints used by the fleet UI
 
-Configure the server environment with the values required by the deployment, including `FUELPRICE_API_KEY`, Supabase service-role access, ORS, PayFast, and application URL settings. `FUELPRICE_API_KEY` is sent only from the server to FuelPrice.co.za; if it is unset or the provider is unavailable, the API falls back to DMPR prices. Keep the key in the ignored root `.env` for local development or deployment secrets, never in frontend files.
+Configure the server environment with the values required by the deployment, including `FUELPRICE_API_KEY`, Supabase service-role access, ORS, Paystack, and application URL settings. `FUELPRICE_API_KEY` is sent only from the server to FuelPrice.co.za; if it is unset or the provider is unavailable, the API falls back to DMPR prices. Keep the key in the ignored root `.env` for local development or deployment secrets, never in frontend files.
 
 ### Supabase setup
 
@@ -300,8 +297,8 @@ iOS builds require macOS, Xcode, and CocoaPods. Open the included iOS workspace 
 ## Deployment notes
 
 - Serve the app over HTTPS in production.
-- Configure the production Supabase, Mapbox, ORS, and PayFast values outside source control.
-- Use PayFast sandbox before setting `PAYFAST_SANDBOX=false` in production.
+- Configure the production Supabase, Mapbox, ORS, and Paystack values outside source control.
+- Use Paystack test keys and test payment pages before going live.
 - Run the required Supabase migrations before enabling billing or fleet features.
 - Bump the service-worker cache version in `sw.js` when deploying changed application assets.
 - Keep authenticated application pages out of search indexes.

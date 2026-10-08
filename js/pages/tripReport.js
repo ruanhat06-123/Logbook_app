@@ -281,27 +281,8 @@ try {
    * business/personal split, and a retention declaration.
    */
   const startExportCheckout = async () => {
-    setButtonBusy(sarsPdfBtn, true, "Opening checkout…");
-    try {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const apiBase = window.__ENV?.VITE_API_URL || "https://logmate.co.za";
-      const response = await fetch(`${apiBase}/api/billing/checkout`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${sessionData.session?.access_token || ""}`,
-        },
-        body: JSON.stringify({ product: "sars_export" }),
-      });
-      const result = await response.json();
-      if (!response.ok || !result.checkoutUrl) throw new Error(result.error || "Export checkout could not be started.");
-      globalThis.LogMateUI?.navigateTo(result.checkoutUrl);
-    } catch (err) {
-      console.error("Export checkout failed:", err);
-      window.alert(err.message || "Export checkout could not be started.");
-    } finally {
-      setButtonBusy(sarsPdfBtn, false);
-    }
+    window.alert("SARS PDF exports are included with Premium and Fleet plans. Choose a plan in Settings to continue.");
+    globalThis.LogMateUI?.navigateTo("app.html?page=settings#billing");
   };
 
   const consumeExportCredit = async () => {

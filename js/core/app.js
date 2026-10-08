@@ -201,7 +201,7 @@ function renderNav(active, user, subscriptionState, fleetContext) {
     : "";
   const driverLinks = `${navLink("home", "dashboard.html", "⌂", "Dashboard")}${navLink("logbook", "logbook.html", "＋", "Fuel logs")}${navLink("trip", "trip.html", "↗", "Trip logs")}${navLink("settings", "settings.html", "⚙", "Settings")}`;
   const adminLinks = `${navLink("home", "dashboard.html", "⌂", "Overview")}${navLink("vehicles", "vehicles.html", "▣", vehicleNavLabel)}${fleetOwnerNav ? "" : navLink("logbook", "logbook.html", "＋", "New fill-up")}${fleetOwnerNav ? "" : navLink("trip", "trip.html", "↗", "New trip")}${navLink("report", "report.html", "▤", "Fuel reports")}${navLink("trip-report", "trip-report.html", "◫", "Trip reports")}${navLink("analytics", "analytics.html", "∿", "Analytics")}${fleetOwnerNav ? navLink("drivers", "drivers.html", "♙", "Drivers") : ""}${fleetLink}${navLink("help", "help.html", "?", "Help")}`;
-  nav.innerHTML = `<div class="brand navbar-brand"><img class="brand-mark" src="../assets/logo.svg" alt="" /> LogMate</div><div class="nav-label">Workspace</div><nav class="nav nav-pills flex-column" aria-label="Main navigation">${driverNav ? driverLinks : adminLinks}</nav>${driverNav ? "" : `<a class="nav-settings nav-link ${active === "settings" ? "active" : ""}" href="settings.html"${active === "settings" ? ' aria-current="page"' : ""} aria-label="Settings" title="Settings"><span class="nav-icon" aria-hidden="true">⚙</span><span>Settings</span></a>`}<div class="sidebar-footer"><div class="user-chip"><span class="avatar">${escapeHtml(initials)}</span><div><div class="user-name">${escapeHtml(displayName)}</div><div class="user-role">${escapeHtml(driverNav ? "Fleet driver" : tierLabel(subscriptionState))} account</div></div></div><button class="signout" data-signout>Sign out →</button></div>`;
+  nav.innerHTML = `<div class="brand navbar-brand"><img class="brand-mark" src="../assets/logo.svg" alt="" /> LogMate<button class="signout signout-mobile" data-signout type="button">Sign out</button></div><div class="nav-label">Workspace</div><nav class="nav nav-pills flex-column" aria-label="Main navigation">${driverNav ? driverLinks : adminLinks}</nav>${driverNav ? "" : `<a class="nav-settings nav-link ${active === "settings" ? "active" : ""}" href="settings.html"${active === "settings" ? ' aria-current="page"' : ""} aria-label="Settings" title="Settings"><span class="nav-icon" aria-hidden="true">⚙</span><span>Settings</span></a>`}<div class="sidebar-footer"><div class="user-chip"><span class="avatar">${escapeHtml(initials)}</span><div><div class="user-name">${escapeHtml(displayName)}</div><div class="user-role">${escapeHtml(driverNav ? "Fleet driver" : tierLabel(subscriptionState))} account</div></div></div><button class="signout" data-signout>Sign out →</button></div>`;
   nav.querySelector(".user-role")?.classList.add("badge", "text-bg-secondary");
 }
 
@@ -260,8 +260,8 @@ async function shell(active, content) {
   document.querySelector(".sidebar-footer")?.prepend(themeToggle);
 
   document
-    .querySelector("[data-signout]")
-    ?.addEventListener("click", async () => {
+    .querySelectorAll("[data-signout]")
+    .forEach((btn) => btn.addEventListener("click", async () => {
       await supabase.auth.signOut();
       // Remove the biometric enrollment for this device on sign-out so the
       // next session can't be unlocked without a password.
@@ -270,7 +270,7 @@ async function shell(active, content) {
       } catch {}
       document.cookie = "logmate_email=; Max-Age=0; Path=/; SameSite=Lax";
       globalThis.LogMateUI?.navigateTo("app.html?page=login", { replace: true });
-    });
+    }));
 
   // reload when a service is confirmed elsewhere in the app
   document.addEventListener("vehicle:serviceConfirmed", () => {
