@@ -199,7 +199,11 @@ if (user) {
 
       <div class="live-trip-panel">
         <div><span class="eyebrow">Quick trip</span><h2>Start from your current location.</h2><p class="row-sub">Choose a vehicle, start tracking, and end the trip when you arrive.</p></div>
-        <div class="live-trip-controls"><button id="start-live-trip" class="btn btn-primary" type="button">Start trip</button><button id="end-live-trip" class="btn btn-secondary" type="button" hidden>End trip</button></div>
+        <div class="live-trip-controls">
+          <label class="field-help" for="driver-behavior-opt-in"><input id="driver-behavior-opt-in" type="checkbox"> Optional driver-behaviour insights (on-device only)</label>
+          <button id="start-live-trip" class="btn btn-primary" type="button">Start trip</button>
+          <button id="end-live-trip" class="btn btn-secondary" type="button" hidden>End trip</button>
+        </div>
         <div id="live-trip-status" class="notice" hidden></div>
       </div>
 
@@ -321,15 +325,23 @@ if (user) {
   `,
   );
 
+  const driverBehaviorOptIn = document.querySelector("#driver-behavior-opt-in");
+  driverBehaviorOptIn.checked = localStorage.getItem("driverBehaviorAnalytics") === "on";
+  driverBehaviorOptIn.addEventListener("change", () => {
+    localStorage.setItem("driverBehaviorAnalytics", driverBehaviorOptIn.checked ? "on" : "off");
+  });
+
   // Initialize offline-first GPS distance tracking system
   await initializeOfflineSync();
   await initializeTripUI();
 
   // If a live trip was ended before this page (re)loaded, restore its data
   // into the existing trip form so the user can review and save it.
+  let pendingDriverSafetySummary = null;
   try {
     const pendingLiveTrip = await getLocalStore("pendingTripData");
     if (pendingLiveTrip) {
+      pendingDriverSafetySummary = pendingLiveTrip.safetySummary || null;
       const vehicleSelectEl = document.querySelector("#vehicle");
       const dateInputEl = document.querySelector("#date");
       const startOdoEl = document.querySelector("#start-odo");
@@ -419,6 +431,7 @@ if (user) {
 
   function resetTripForm() {
     editingTripId = null;
+    pendingDriverSafetySummary = null;
     document.querySelector("#trip-form").reset();
     dateInput.value = new Date().toISOString().slice(0, 10);
     if (defaultTripType === "personal" || defaultTripType === "business") {
@@ -1485,6 +1498,14 @@ if (user) {
             trip_origin: origin,
             trip_destination: destination,
             trip_purpose: tripPurposeToStore,
+            ...(!editingTripId && pendingDriverSafetySummary
+              ? {
+                  driver_safety_score: pendingDriverSafetySummary.score,
+                  driver_safety_event_count: pendingDriverSafetySummary.eventCount,
+                  driver_safety_event_counts: pendingDriverSafetySummary.eventCounts,
+                  driver_safety_data_quality: pendingDriverSafetySummary.quality,
+                }
+              : {}),
         };
         const tripRequest = editingTripId
           ? supabase.from("trips").update(tripValues).eq("id", editingTripId)
@@ -1512,9 +1533,16 @@ if (user) {
           );
         } else {
           successEl.hidden = false;
-          successEl.textContent = editingTripId
-            ? "Trip updated and vehicle odometer updated."
-            : "Trip saved and vehicle odometer updated.";
+          if (editingTripId) {
+            successEl.textContent = "Trip updated and vehicle odometer updated.";
+          } else if (pendingDriverSafetySummary?.score === null) {
+            successEl.textContent = "Trip saved. Driver insights were not scored because there was not enough reliable GPS data.";
+          } else if (Number.isFinite(pendingDriverSafetySummary?.score)) {
+            successEl.textContent = `Trip saved. Driver insights: ${pendingDriverSafetySummary.score}/100 (${pendingDriverSafetySummary.quality} data).`;
+          } else {
+            successEl.textContent = "Trip saved and vehicle odometer updated.";
+          }
+          pendingDriverSafetySummary = null;
           setTimeout(() => window.location.reload(), 700);
         }
       } catch (err) {

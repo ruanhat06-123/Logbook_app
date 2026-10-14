@@ -1,5 +1,6 @@
 // serviceReminder.js
 import { supabase } from "./supabaseClient.js";
+import { readServiceForecast } from "./serviceForecast.js";
 
 const REMINDER_THRESHOLD = 1000;
 
@@ -35,12 +36,23 @@ export const serviceReminderMarkup = (vehicleItem) => {
 
 export const notifyServiceDue = async (vehicleItem) => {
   if (localStorage.getItem("serviceNotifications") === "off") return;
-  if (!isServiceDue(vehicleItem) || !("Notification" in window)) return;
+  const immediatelyDue = isServiceDue(vehicleItem);
+  const forecast = await readServiceForecast(vehicleItem.id);
+  const predictedSoon =
+    forecast?.quality !== "insufficient-history" &&
+    forecast?.quality !== "missing-odometer" &&
+    Number.isFinite(forecast?.daysUntilWarning) &&
+    forecast.daysUntilWarning >= 0 &&
+    forecast.daysUntilWarning <= 7;
+  if ((!immediatelyDue && !predictedSoon) || !("Notification" in window)) return;
   if (Notification.permission === "default") await Notification.requestPermission();
   if (Notification.permission !== "granted") return;
 
+  const body = immediatelyDue
+    ? `${vehicleItem.number_plate || "Your vehicle"} has ${Math.max(0, Number(vehicleItem.next_service_mileage) - Number(vehicleItem.current_mileage || 0)).toLocaleString()} km until service. Tap to open LogMate and confirm the service.`
+    : `${vehicleItem.number_plate || "Your vehicle"} is predicted to reach its 1,000 km service warning on ${forecast.warningDate}. Check the forecast in Smart Analytics.`;
   const options = {
-    body: `${vehicleItem.number_plate || "Your vehicle"} has ${Math.max(0, Number(vehicleItem.next_service_mileage) - Number(vehicleItem.current_mileage || 0)).toLocaleString()} km until service. Tap to open LogMate and confirm the service.`,
+    body,
     tag: `service-${vehicleItem.id}`,
     icon: "/assets/logo.svg",
     badge: "/assets/logo.svg",
@@ -54,9 +66,9 @@ export const notifyServiceDue = async (vehicleItem) => {
         ? await navigator.serviceWorker.ready.catch(() => null)
         : null;
     if (registration?.showNotification) {
-      await registration.showNotification("Vehicle service due", options);
+      await registration.showNotification(immediatelyDue ? "Vehicle service due" : "Service predicted soon", options);
     } else {
-      new Notification("Vehicle service due", options);
+      new Notification(immediatelyDue ? "Vehicle service due" : "Service predicted soon", options);
     }
   } catch (err) {
     console.warn("Failed to show service notification:", err);

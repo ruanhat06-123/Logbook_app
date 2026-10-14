@@ -7,6 +7,10 @@
  */
 
 import { getLocalStore, setLocalStore } from "./localStore.js";
+import {
+  cacheServiceForecasts,
+  forecastFleetServices,
+} from "./serviceForecast.js";
 
 const log = (...args) => console.log("[Analytics]", ...args);
 const warn = (...args) => console.warn("[Analytics]", ...args);
@@ -181,53 +185,6 @@ function analyzeServiceIntervals(vehicles) {
       remainingKm: remaining,
       overdue,
       dueSoon,
-    };
-  });
-}
-
-/**
- * Predict the next service date per vehicle from average daily usage,
- * which is estimated from trip history (km per day over the observed span).
- */
-function predictServiceDates(vehicles, trips) {
-  return vehicles.map((vehicle) => {
-    const current = num(vehicle.current_mileage) ?? 0;
-    const next = num(vehicle.next_service_mileage);
-
-    const vehicleTrips = trips
-      .filter((t) => String(t.vehicle_id) === String(vehicle.id) && toDate(t.created_at))
-      .sort((a, b) => toDate(a.created_at) - toDate(b.created_at));
-
-    let kmPerDay = null;
-    if (vehicleTrips.length >= 2) {
-      const first = vehicleTrips[0];
-      const last = vehicleTrips[vehicleTrips.length - 1];
-      const startOdo = num(first.mileage_start ?? first.mileage_start_km);
-      const endOdo = num(last.mileage_end ?? last.mileage_end_km);
-      const days = Math.max(1, (toDate(last.created_at) - toDate(first.created_at)) / 86400000);
-      if (startOdo !== null && endOdo !== null && endOdo > startOdo) {
-        kmPerDay = (endOdo - startOdo) / days;
-      }
-    }
-
-    let predictedDate = null;
-    let daysRemaining = null;
-    if (next !== null && kmPerDay && kmPerDay > 0) {
-      const kmRemaining = next - current;
-      daysRemaining = Math.round(kmRemaining / kmPerDay);
-      predictedDate = new Date(Date.now() + Math.max(0, daysRemaining) * 86400000)
-        .toISOString()
-        .slice(0, 10);
-    }
-
-    return {
-      vehicleId: vehicle.id,
-      plate: vehicle.number_plate || "Vehicle",
-      nextServiceMileage: next,
-      kmPerDay: kmPerDay ? Number(kmPerDay.toFixed(1)) : null,
-      kmPerWeek: kmPerDay ? Number((kmPerDay * 7).toFixed(0)) : null,
-      predictedDate,
-      daysRemaining,
     };
   });
 }
@@ -415,7 +372,28 @@ export async function computeAnalytics({ vehicles = [], trips = [], fuelEntries 
   const tripAnomalies = detectTripAnomalies(trips);
   const fuelAnomalies = detectFuelAnomalies(fuelEntries);
   const serviceIntervals = analyzeServiceIntervals(vehicles);
-  const servicePredictions = predictServiceDates(vehicles, trips);
+  const odometerReadings = fuelEntries
+    .filter((entry) => num(entry.current_mileage) !== null && entry.vehicle_id)
+    .map((entry) => ({
+      vehicle_id: entry.vehicle_id,
+      reading_at: entry.created_at,
+      mileage: entry.current_mileage,
+    }));
+  const servicePredictions = forecastFleetServices({
+    vehicles,
+    trips,
+    odometerReadings,
+  }).map((prediction) => ({
+    ...prediction,
+    plate: vehicles.find((vehicle) => String(vehicle.id) === String(prediction.vehicleId))?.number_plate || "Vehicle",
+    predictedDate: prediction.serviceDate,
+    kmPerDay: prediction.estimatedKmPerDay,
+    kmPerWeek: prediction.estimatedKmPerDay === null
+      ? null
+      : Math.round(prediction.estimatedKmPerDay * 7),
+    daysRemaining: prediction.daysUntilService ?? null,
+  }));
+  await cacheServiceForecasts(servicePredictions);
   const monthlyFuel = estimateMonthlyFuelCost(fuelEntries);
   const taxYearSplit = await projectTaxYearSplitInWorker(trips);
   const efficiency = fuelEfficiencyTrend(fuelEntries);

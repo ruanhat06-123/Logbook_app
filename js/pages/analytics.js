@@ -14,6 +14,7 @@ import {
   restorePendingServiceReminders,
 } from "../core/serviceReminder.js";
 import { getLocalStore, setLocalStore } from "../core/localStore.js";
+import { persistServiceForecasts } from "../core/serviceForecast.js";
 
 const user = await requireAuth();
 if (!user) throw new Error("Not authenticated");
@@ -92,6 +93,12 @@ try {
 
 const hasData =
   (tripRows?.length || 0) > 0 || (fuelRows?.length || 0) > 0 || (vehicleRows?.length || 0) > 0;
+
+if (!fromCache && navigator.onLine && analytics?.service?.predictions?.length) {
+  persistServiceForecasts(supabase, analytics.service.predictions).catch((forecastError) => {
+    console.warn("Service forecast could not be synchronized:", forecastError);
+  });
+}
 
 await shell(
   "analytics",
@@ -658,8 +665,20 @@ function renderPredictions(analyticsData) {
   );
   if (servicePredictions.length) {
     servicePredictions.forEach((p) => {
-      const date = new Date(p.predictedDate).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
-      rows.push(`<div class="stat-row"><span>${escape(p.plate)} next service</span><strong>around ${escape(date)}</strong></div>`);
+      const formatDate = (value) =>
+        new Date(`${value}T00:00:00`).toLocaleDateString("en-GB", {
+          day: "numeric",
+          month: "short",
+          year: "numeric",
+        });
+      const usageRate = p.kmPerDay === null ? "" : ` · ${p.kmPerDay} km/day`;
+      const quality = p.quality === "limited" ? " · limited history" : "";
+      if (p.warningDate) {
+        rows.push(`<div class="stat-row"><span>${escape(p.plate)} · 1,000 km warning${escape(quality)}</span><strong>around ${escape(formatDate(p.warningDate))}${escape(usageRate)}</strong></div>`);
+      }
+      if (p.predictedDate) {
+        rows.push(`<div class="stat-row"><span>${escape(p.plate)} · full service interval${escape(quality)}</span><strong>around ${escape(formatDate(p.predictedDate))}${escape(usageRate)}</strong></div>`);
+      }
     });
   } else {
     rows.push(`<div class="stat-row"><span>Next service dates</span><strong>Needs more trip history</strong></div>`);

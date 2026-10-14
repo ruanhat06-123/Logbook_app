@@ -23,6 +23,11 @@ import {
   startNativeBackgroundWatcher,
   stopNativeBackgroundWatcher,
 } from "./nativeBackgroundGeolocation.js";
+import {
+  finishDriverBehaviorTracking,
+  requestDriverMotionPermission,
+  startDriverBehaviorTracking,
+} from "./driverBehavior.js";
 
 const log = (...args) => console.log("[Trip UI]", ...args);
 const warn = (...args) => console.warn("[Trip UI]", ...args);
@@ -155,16 +160,23 @@ async function handleStartTrip(
   event?.preventDefault?.();
 
   const vehicleSelect = document.getElementById("vehicle");
-  const vehicleId = vehicleSelect?.value;
 
   if (resumeSession?.vehicleId && vehicleSelect) {
     vehicleSelect.value = resumeSession.vehicleId;
   }
+  const vehicleId = vehicleSelect?.value;
 
   if (!vehicleId && !automatic) {
     alert("Please select a vehicle");
     return;
   }
+
+  const behaviorCheckbox = document.getElementById("driver-behavior-opt-in");
+  const behaviorEnabled = resumeSession?.driverBehaviorEnabled ??
+    (behaviorCheckbox?.checked === true);
+  const motionPermissionPromise = behaviorEnabled && !resumeSession
+    ? requestDriverMotionPermission()
+    : Promise.resolve(resumeSession?.motionPermission || "unavailable");
 
   try {
     const result = await startTripTracking({
@@ -183,9 +195,11 @@ async function handleStartTrip(
     const startBtn = document.getElementById("start-live-trip");
     const endBtn = document.getElementById("end-live-trip");
     const statusDiv = document.getElementById("live-trip-status");
+    const behaviorCheckbox = document.getElementById("driver-behavior-opt-in");
 
     if (startBtn) startBtn.hidden = true;
     if (endBtn) endBtn.hidden = false;
+    if (behaviorCheckbox) behaviorCheckbox.disabled = true;
 
     // Start polling tracking status
     startTrackingStatusPolling();
@@ -206,10 +220,38 @@ async function handleStartTrip(
       startedAt: new Date().toLocaleString(),
       automatic,
     };
+    activeTripSession.driverBehaviorEnabled = behaviorEnabled;
+    activeTripSession.behaviorTripId ||= `driver-${crypto.randomUUID()}`;
+    activeTripSession.motionPermission = await motionPermissionPromise;
     if (automatic) smartLastMovementAt = Date.now();
 
     // Save session to local storage in case of crash
     await setLocalStore("activeTripSession", activeTripSession);
+    if (behaviorEnabled) {
+      try {
+        const behaviorState = await startDriverBehaviorTracking({
+          tripId: activeTripSession.behaviorTripId,
+          enabled: true,
+          motionAccess: activeTripSession.motionPermission,
+        });
+        if (behaviorState.motionPermission !== "granted" && behaviorState.motionPermission !== "available") {
+          const status = document.getElementById("live-trip-status");
+          if (status) {
+            status.hidden = false;
+            status.textContent = "Trip tracking active. Motion access is unavailable; insights will use GPS only.";
+          }
+        }
+      } catch (behaviorError) {
+        activeTripSession.driverBehaviorEnabled = false;
+        await setLocalStore("activeTripSession", activeTripSession);
+        error("Driver behavior tracking could not start:", behaviorError);
+        const status = document.getElementById("live-trip-status");
+        if (status) {
+          status.hidden = false;
+          status.textContent = "Trip tracking active. Driver insights could not start; trip logging is unaffected.";
+        }
+      }
+    }
 
       // Show the live tracking notification with smart flag
       await showTrackingNotification(0, { smart: automatic });
@@ -339,6 +381,13 @@ async function handleEndTrip(event, { automatic = false } = {}) {
       return;
     }
 
+    let safetySummary = null;
+    try {
+      safetySummary = await finishDriverBehaviorTracking();
+    } catch (behaviorError) {
+      error("Driver behavior summary could not be finalized:", behaviorError);
+    }
+
     log("Trip ended successfully", result.tripPayload);
 
     // Update UI
@@ -346,11 +395,13 @@ async function handleEndTrip(event, { automatic = false } = {}) {
     const endBtn = document.getElementById("end-live-trip");
     const statusDiv = document.getElementById("live-trip-status");
     const vehicleSelect = document.getElementById("vehicle");
+    const behaviorCheckbox = document.getElementById("driver-behavior-opt-in");
 
     if (startBtn) startBtn.hidden = false;
     if (endBtn) endBtn.hidden = true;
     if (statusDiv) statusDiv.hidden = true;
     if (vehicleSelect) vehicleSelect.disabled = false;
+    if (behaviorCheckbox) behaviorCheckbox.disabled = false;
 
     // Close the persistent tracking notification since the trip was ended
     // from within the app.
@@ -393,6 +444,7 @@ async function handleEndTrip(event, { automatic = false } = {}) {
       destinationLabel,
       rawCoordinates: coordinates,
       automatic: wasAutomatic,
+      safetySummary,
     };
 
     // Store pending trip data so the trip page can pick it up on reload

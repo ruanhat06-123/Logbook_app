@@ -462,6 +462,10 @@ form.addEventListener("submit", async (event) => {
         }
       }
       if (!verificationResponse) throw lastNetworkError || new Error("Human verification service is unavailable.");
+      if (verificationResponse.status === 404) {
+        window.grecaptcha.reset(recaptchaWidgetId);
+        throw new Error("Sign-up verification service is unavailable. Please try again later.");
+      }
       const verification = await verificationResponse.json().catch(() => null);
       if (!verificationResponse.ok || !verification?.success) {
         window.grecaptcha.reset(recaptchaWidgetId);

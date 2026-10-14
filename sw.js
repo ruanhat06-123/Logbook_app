@@ -1,4 +1,4 @@
-const CACHE_NAME = "logmate-shell-v43";
+const CACHE_NAME = "logmate-shell-v45";
 const OFFLINE_PAGE = "/html/app.html?page=offline";
 
 const APP_SHELL = [
@@ -28,6 +28,9 @@ const APP_SHELL = [
   "/js/core/tripUIIntegration.js",
   "/js/core/reportCache.js",
   "/js/core/analytics.js",
+  "/js/core/driverBehavior.js",
+  "/js/core/serviceForecast.js",
+  "/js/core/taxCalculator.js",
   "/js/core/analyticsWorker.js",
   "/js/core/odometerAudit.js",
   "/js/core/dataBudget.js",

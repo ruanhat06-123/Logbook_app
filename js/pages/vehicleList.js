@@ -20,7 +20,7 @@ if (driverView) {
 
 const { data: currentVehicles = [], error: vehicleError } = await supabase
   .from("vehicles")
-  .select("id, number_plate, make, model, current_mileage, last_service_mileage, next_service_mileage")
+  .select("id, number_plate, make, model, year, current_mileage, last_service_mileage, next_service_mileage")
   .order("number_plate");
 if (vehicleError) console.error("Vehicle list fetch error:", vehicleError);
 const vehicleMarkup = currentVehicles.length
@@ -158,6 +158,10 @@ document.querySelectorAll("[data-delete-vehicle]").forEach((button) =>
 document.querySelectorAll("[data-edit-vehicle]").forEach((button) =>
   button.addEventListener("click", () => {
     const item = currentVehicles.find((entry) => String(entry.id) === String(button.dataset.editVehicle));
+    if (!item) {
+      window.alert("This vehicle could not be found. Refresh the list and try again.");
+      return;
+    }
     const backdrop = document.createElement("div");
     backdrop.className = "modal-backdrop";
     backdrop.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-labelledby="edit-vehicle-title"><div class="modal-head"><h2 id="edit-vehicle-title">Edit vehicle</h2><button class="modal-close" type="button" aria-label="Close">×</button></div><form id="edit-vehicle-form" class="form-grid"><div class="field"><label for="edit-plate">Number plate</label><input id="edit-plate" value="${escapeHtml(item.number_plate || "")}" required></div><div class="field"><label for="edit-make">Make</label><input id="edit-make" value="${escapeHtml(item.make || "")}" required></div><div class="field"><label for="edit-model">Model</label><input id="edit-model" value="${escapeHtml(item.model || "")}" required></div><div class="field"><label for="edit-year">Year</label><input id="edit-year" type="number" min="1886" max="2200" value="${escapeHtml(item.year || "")}"></div><div class="field"><label for="edit-mileage">Current mileage (km)</label><input id="edit-mileage" type="number" min="0" value="${escapeHtml(item.current_mileage || 0)}" required></div><div class="field"><label for="edit-last-service">Last service mileage (km)</label><input id="edit-last-service" type="number" min="0" value="${escapeHtml(item.last_service_mileage || "")}"></div><div class="field"><label for="edit-next-service">Next service mileage (km)</label><input id="edit-next-service" type="number" min="0" value="${escapeHtml(item.next_service_mileage || "")}"></div><div class="form-actions field full"><button class="btn btn-secondary modal-cancel" type="button">Cancel</button><button class="btn btn-primary" type="submit">Save changes →</button></div></form></div>`;
@@ -167,7 +171,7 @@ document.querySelectorAll("[data-edit-vehicle]").forEach((button) =>
     backdrop.querySelector(".modal-cancel").addEventListener("click", close);
     backdrop.querySelector("#edit-vehicle-form").addEventListener("submit", async (event) => {
       event.preventDefault();
-      const { error } = await supabase.from("vehicles").update({
+      const { data: updatedVehicle, error } = await supabase.from("vehicles").update({
         number_plate: backdrop.querySelector("#edit-plate").value.trim().toUpperCase(),
         make: backdrop.querySelector("#edit-make").value.trim(),
         model: backdrop.querySelector("#edit-model").value.trim(),
@@ -175,8 +179,9 @@ document.querySelectorAll("[data-edit-vehicle]").forEach((button) =>
         current_mileage: Number(backdrop.querySelector("#edit-mileage").value),
         last_service_mileage: backdrop.querySelector("#edit-last-service").value ? Number(backdrop.querySelector("#edit-last-service").value) : null,
         next_service_mileage: backdrop.querySelector("#edit-next-service").value ? Number(backdrop.querySelector("#edit-next-service").value) : null,
-      }).eq("id", item.id);
+      }).eq("id", item.id).select("id").maybeSingle();
       if (error) return window.alert(error.message);
+      if (!updatedVehicle) return window.alert("No vehicle was updated. Check your access and try again.");
       window.location.reload();
     });
   }),

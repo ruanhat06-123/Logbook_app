@@ -274,6 +274,8 @@ Run the SQL migrations in `server/sql/` in the Supabase SQL editor before using 
 
 Run `server/sql/fleet_compliance.sql` as well to enable AARTO demerit points, PrDP expiry fields, and vehicle licence-disc/VIN/engine metadata.
 
+Apply `supabase/migrations/20261014000000_local_analytics_tax_forecasts.sql` after the base vehicle and trip tables exist. It adds local-analytics summary fields, vehicle tax profile and service forecast fields, and an RLS-protected vehicle tax calculation snapshot table. See the [engineering specification](docs/offline-analytics-tax-engineering.md) for deployment checks and tax-rule versioning.
+
 ### Capacitor web sync
 
 After changing frontend files, rebuild the generated native web bundle:
@@ -302,7 +304,7 @@ iOS builds require macOS, Xcode, and CocoaPods. Open the included iOS workspace 
 - Run the required Supabase migrations before enabling billing or fleet features.
 - Bump the service-worker cache version in `sw.js` when deploying changed application assets.
 - Keep authenticated application pages out of search indexes.
-- Verify the deployed API with `/api/health`.
+- Verify the deployed API with `/api/health` and confirm `POST /api/recaptcha/verify` is deployed; a healthy API status alone does not confirm that sign-up verification is available.
 - Review browser permission and mobile battery settings before relying on background GPS tracking.
 
 ## Roadmap boundaries
@@ -312,4 +314,5 @@ The South African fleet roadmap also proposes depot-to-depot WebRTC/Wi-Fi sync, 
 ## Documentation
 
 - [Extended feature and setup guide](docs/README.md)
+- [Offline analytics, tax estimates, and service forecasts](docs/offline-analytics-tax-engineering.md)
 - [SEO implementation guide](docs/seo-implementation.md)

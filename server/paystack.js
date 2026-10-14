@@ -18,7 +18,11 @@ const toRand = (cents) => Number(cents || 0) / 100;
 const dateOnly = (date) => date.toISOString().slice(0, 10);
 const addMonth = (date) => {
   const next = new Date(date);
+  const day = next.getDate();
+  next.setDate(1);
   next.setMonth(next.getMonth() + 1);
+  const lastDay = new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate();
+  next.setDate(Math.min(day, lastDay));
   return next;
 };
 
@@ -85,8 +89,11 @@ function registerPaystackRoutes(app, { supabaseAdmin, getUserFromRequest, fetch,
 
   const releaseEvent = (key) => supabaseAdmin.from("paystack_events").delete().eq("event_key", key);
 
-  async function grantTier({ userId, tier, expiry, amountCents, eventType }) {
-    const { error } = await supabaseAdmin
+  async function activateSubscriptionForSuccessfulPayment({ userId, tier, expiry, amountCents, eventType }) {
+    if (!userId || !pricing[tier] || !Number.isInteger(Number(amountCents)) || Number(amountCents) <= 0) {
+      throw new Error("Refusing to activate a subscription without a verified user, plan, and payment amount.");
+    }
+    const { data: account, error } = await supabaseAdmin
       .from("users")
       .update({
         subscription_tier: tier,
@@ -94,11 +101,15 @@ function registerPaystackRoutes(app, { supabaseAdmin, getUserFromRequest, fetch,
         payment_status: "active",
         billing_cycle: "monthly",
       })
-      .eq("id", userId);
+      .eq("id", userId)
+      .select("id")
+      .maybeSingle();
     if (error) throw error;
-    await supabaseAdmin
+    if (!account) throw new Error(`No subscription account found for verified payment user ${userId}.`);
+    const { error: eventError } = await supabaseAdmin
       .from("subscription_events")
       .insert({ user_id: userId, provider: "paystack", event_type: eventType, amount: toRand(amountCents) });
+    if (eventError) throw eventError;
   }
 
   async function storeSubscriptionCode(userId, data) {
@@ -118,17 +129,14 @@ function registerPaystackRoutes(app, { supabaseAdmin, getUserFromRequest, fetch,
       const userId = tier ? await findUserId(data) : null;
       if (!tier || !userId) return console.warn("Paystack charge ignored: tier or user could not be resolved", data.reference);
       const base = new Date(data.paid_at || Date.now());
-      await grantTier({ userId, tier, expiry: addMonth(base), amountCents: data.amount, eventType: "payment_succeeded" });
+      await activateSubscriptionForSuccessfulPayment({ userId, tier, expiry: addMonth(base), amountCents: data.amount, eventType: "payment_succeeded" });
       await storeSubscriptionCode(userId, data);
       return;
     }
 
     if (event === "subscription.create") {
-      const tier = tierFromPayload(data, pricing, data.amount ?? data.plan?.amount);
-      const userId = tier ? await findUserId(data) : null;
-      if (!tier || !userId) return console.warn("Paystack subscription ignored: tier or user could not be resolved", data.subscription_code);
-      const next = data.next_payment_date ? new Date(data.next_payment_date) : addMonth(new Date());
-      await grantTier({ userId, tier, expiry: next, amountCents: data.amount ?? data.plan?.amount, eventType: "subscription_created" });
+      const userId = await findUserId(data);
+      if (!userId) return console.warn("Paystack subscription ignored: user could not be resolved", data.subscription_code);
       await storeSubscriptionCode(userId, data);
       return;
     }
@@ -142,7 +150,7 @@ function registerPaystackRoutes(app, { supabaseAdmin, getUserFromRequest, fetch,
         if (!tier) return console.warn("Paystack invoice ignored: amount does not match a plan", data.invoice_code);
         const period = data.period_end || data.subscription?.next_payment_date;
         const expiry = period ? new Date(period) : addMonth(new Date(data.paid_at || Date.now()));
-        await grantTier({ userId, tier, expiry, amountCents, eventType: "invoice_paid" });
+        await activateSubscriptionForSuccessfulPayment({ userId, tier, expiry, amountCents, eventType: "invoice_paid" });
       } else if (data.status === "failed") {
         const { error } = await supabaseAdmin.from("users").update({ payment_status: "failed" }).eq("id", userId);
         if (error) throw error;
