@@ -61,12 +61,20 @@ Available on Premium and Fleet tiers.
 - Detect unusual trip distances compared with vehicle history.
 - Detect unusual fuel consumption compared with recent fill-ups.
 - Identify overdue or soon-due services.
-- Forecast the next service date from average usage.
+- Forecast each vehicle's next 1,000 km warning and service date using rolling odometer, trip-frequency, and business-intensity history.
 - Estimate monthly fuel cost from recent fill-ups.
 - Project the current South African tax-year business/personal mileage split.
+- Calculate local, versioned SARS travel-cost and Section 11(e) wear-and-tear illustrations, with saved tax profiles and calculation snapshots.
 - Display fuel-efficiency trends, business/personal charts, and service-compliance indicators using client-side SVG charts.
 - Cache analytics in IndexedDB and recalculate when trips or fill-ups change.
 - Surface analytics warnings in dashboards, reports, CSV exports, and SARS exports.
+
+### Live-trip driver insights
+
+- Opt in per live trip to on-device driving-event estimates using filtered GPS speed changes and optional DeviceMotion corroboration.
+- Detect candidate harsh-braking, rapid-acceleration, and cornering events; cache event details locally and save only trip-level score aggregates.
+- Leave the score unavailable when the trip does not contain enough reliable GPS data.
+- Treat scores as informational estimates, not certified safety or insurance ratings.
 
 ### Fleet management
 
@@ -103,7 +111,7 @@ Supported tiers are `free`, `premium`, `fleet_starter`, and `fleet_pro`.
 - Premium access to Smart Analytics and SARS PDF exports.
 - Fleet Starter and Fleet Pro access to fleet dashboards and driver management.
 - Paystack payment-page checkout (one link per tier) tagged with the signed-in user.
-- Paystack webhook (`charge.success`, `subscription.create`, `invoice.update`) verified with HMAC SHA512 and applied with the Supabase service role.
+- Paystack webhook events verified with HMAC SHA512; only successful, plan-matched payments activate a tier in Supabase. Subscription creation alone does not grant access.
 - Subscription expiry and payment-status handling.
 - In-app warnings for expiring subscriptions and failed payments.
 - Paid SARS export credits for eligible Free-tier users, consumed server-side after verified payment.
@@ -275,6 +283,8 @@ Run the SQL migrations in `server/sql/` in the Supabase SQL editor before using 
 Run `server/sql/fleet_compliance.sql` as well to enable AARTO demerit points, PrDP expiry fields, and vehicle licence-disc/VIN/engine metadata.
 
 Apply `supabase/migrations/20261014000000_local_analytics_tax_forecasts.sql` after the base vehicle and trip tables exist. It adds local-analytics summary fields, vehicle tax profile and service forecast fields, and an RLS-protected vehicle tax calculation snapshot table. See the [engineering specification](docs/offline-analytics-tax-engineering.md) for deployment checks and tax-rule versioning.
+
+The tax calculator is an estimate and requires review against the taxpayer's circumstances and the applicable SARS rules. Forecast notifications are evaluated when the app runs; the service worker does not schedule a wake-up on a future date.
 
 ### Capacitor web sync
 

@@ -1,6 +1,6 @@
 // public/env.js
 // Runtime environment for the client. Only expose public tokens here.
-// Use the local API during development and the current site origin on the web.
+// Use the local API during development and the apex production domain only.
 const isLocalDev =
   ["localhost", "127.0.0.1"].includes(window.location.hostname) &&
   window.Capacitor?.isNativePlatform?.() !== true;
