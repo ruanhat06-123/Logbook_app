@@ -1,4 +1,4 @@
-const CACHE_NAME = "logmate-shell-v45";
+const CACHE_NAME = "logmate-shell-v46";
 const OFFLINE_PAGE = "/html/app.html?page=offline";
 
 const APP_SHELL = [

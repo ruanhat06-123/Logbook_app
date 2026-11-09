@@ -70,25 +70,47 @@ await shell("vehicles", `
   </section>
 `);
 
-await requestServiceNotifications();
+void requestServiceNotifications().catch((error) => {
+  console.warn("Service notification permission request failed:", error);
+});
 currentVehicles.forEach(notifyServiceDue);
 restorePendingServiceReminders(currentVehicles);
 
 document.querySelectorAll("[data-service-history]").forEach((button) => {
   button.addEventListener("click", async () => {
     const vehicle = currentVehicles.find((item) => String(item.id) === String(button.dataset.serviceHistory));
-    button.disabled = true;
-    const { data: records = [], error: serviceError } = await supabase
-      .from("service_records")
-      .select("*, service_record_files(*)")
-      .eq("vehicle_id", vehicle.id)
-      .order("service_date", { ascending: false });
-    button.disabled = false;
-    if (serviceError) return window.alert(serviceError.message);
+    if (!vehicle) {
+      window.alert("This vehicle could not be found. Refresh the list and try again.");
+      return;
+    }
+
     const backdrop = document.createElement("div");
     backdrop.className = "modal-backdrop";
-    backdrop.innerHTML = `<div class="modal service-modal" role="dialog" aria-modal="true" aria-labelledby="service-history-title"><div class="modal-head"><div><h2 id="service-history-title">${escapeHtml(vehicle.make || "Vehicle")} ${escapeHtml(vehicle.model || "")}</h2><div class="row-sub">Service history · ${escapeHtml(vehicle.number_plate || "")}</div></div><button class="modal-close" type="button" aria-label="Close">×</button></div><div class="service-record-list">${records.length ? records.map((record) => `<article class="service-record"><div class="service-record-head"><strong>${escapeHtml(record.title)}</strong><span>${escapeHtml(record.service_date || "")}</span></div><div class="row-sub">${record.mileage == null ? "Mileage not entered" : `${Number(record.mileage).toLocaleString()} km`}${record.invoice_amount == null ? "" : ` · R ${Number(record.invoice_amount).toFixed(2)}`}</div>${record.notes ? `<p>${escapeHtml(record.notes)}</p>` : ""}<div class="service-files">${(record.service_record_files || []).map((file) => `<button class="service-file" type="button" data-file-path="${escapeHtml(file.file_path)}">${escapeHtml(file.file_name)}</button>`).join("")}</div></article>`).join("") : '<div class="empty">No service history recorded yet.</div>'}</div><form id="service-record-form" class="form-grid"><div class="field"><label for="service-title">Service title</label><input id="service-title" placeholder="Annual service" required></div><div class="field"><label for="service-date">Date</label><input id="service-date" type="date" required></div><div class="field"><label for="service-mileage">Mileage (km)</label><input id="service-mileage" type="number" min="0"></div><div class="field"><label for="service-amount">Invoice amount (R)</label><input id="service-amount" type="number" min="0" step="0.01"></div><div class="field full"><label for="service-notes">Notes</label><textarea id="service-notes" rows="3" placeholder="Work completed, parts replaced, or warranty details"></textarea></div><div class="field full"><label for="service-files">Invoices or photos</label><input id="service-files" type="file" accept="image/*,.pdf" multiple><small class="field-help">You can upload photos, invoices, or both.</small></div><div class="form-actions field full"><button class="btn btn-secondary modal-cancel" type="button">Cancel</button><button class="btn btn-primary" type="submit">Save service record →</button></div></form></div>`;
+    backdrop.innerHTML = '<div class="modal" role="dialog" aria-modal="true" aria-labelledby="service-history-loading"><h2 id="service-history-loading">Loading service history…</h2><p class="row-sub">Please wait while the records are retrieved.</p><button class="btn btn-secondary" type="button">Close</button></div>';
     document.body.append(backdrop);
+    backdrop.querySelector("button").addEventListener("click", () => backdrop.remove());
+    button.disabled = true;
+    let records = [];
+    let serviceError;
+    try {
+      const response = await supabase
+        .from("service_records")
+        .select("*, service_record_files(*)")
+        .eq("vehicle_id", vehicle.id)
+        .order("service_date", { ascending: false });
+      records = response.data || [];
+      serviceError = response.error;
+    } catch (error) {
+      serviceError = error;
+    } finally {
+      button.disabled = false;
+    }
+    if (serviceError) {
+      backdrop.innerHTML = `<div class="modal" role="alertdialog" aria-modal="true" aria-labelledby="service-history-error"><div class="modal-head"><h2 id="service-history-error">Service history unavailable</h2><button class="modal-close" type="button" aria-label="Close">×</button></div><p class="row-sub">${escapeHtml(serviceError.message || "Unable to load service history. Please try again.")}</p></div>`;
+      backdrop.querySelector(".modal-close").addEventListener("click", () => backdrop.remove());
+      return;
+    }
+    backdrop.innerHTML = `<div class="modal service-modal" role="dialog" aria-modal="true" aria-labelledby="service-history-title"><div class="modal-head"><div><h2 id="service-history-title">${escapeHtml(vehicle.make || "Vehicle")} ${escapeHtml(vehicle.model || "")}</h2><div class="row-sub">Service history · ${escapeHtml(vehicle.number_plate || "")}</div></div><button class="modal-close" type="button" aria-label="Close">×</button></div><div class="service-record-list">${records.length ? records.map((record) => `<article class="service-record"><div class="service-record-head"><strong>${escapeHtml(record.title)}</strong><span>${escapeHtml(record.service_date || "")}</span></div><div class="row-sub">${record.mileage == null ? "Mileage not entered" : `${Number(record.mileage).toLocaleString()} km`}${record.invoice_amount == null ? "" : ` · R ${Number(record.invoice_amount).toFixed(2)}`}</div>${record.notes ? `<p>${escapeHtml(record.notes)}</p>` : ""}<div class="service-files">${(record.service_record_files || []).map((file) => `<button class="service-file" type="button" data-file-path="${escapeHtml(file.file_path)}">${escapeHtml(file.file_name)}</button>`).join("")}</div></article>`).join("") : '<div class="empty">No service history recorded yet.</div>'}</div><form id="service-record-form" class="form-grid"><div class="field"><label for="service-title">Service title</label><input id="service-title" placeholder="Annual service" required></div><div class="field"><label for="service-date">Date</label><input id="service-date" type="date" required></div><div class="field"><label for="service-mileage">Mileage (km)</label><input id="service-mileage" type="number" min="0"></div><div class="field"><label for="service-amount">Invoice amount (R)</label><input id="service-amount" type="number" min="0" step="0.01"></div><div class="field full"><label for="service-notes">Notes</label><textarea id="service-notes" rows="3" placeholder="Work completed, parts replaced, or warranty details"></textarea></div><div class="field full"><label for="service-files">Invoices or photos</label><input id="service-files" type="file" accept="image/*,.pdf" multiple><small class="field-help">You can upload photos, invoices, or both.</small></div><div class="form-actions field full"><button class="btn btn-secondary modal-cancel" type="button">Cancel</button><button class="btn btn-primary" type="submit">Save service record →</button></div></form></div>`;
     const close = () => backdrop.remove();
     backdrop.querySelector(".modal-close").addEventListener("click", close);
     backdrop.querySelector(".modal-cancel").addEventListener("click", close);

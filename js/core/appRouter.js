@@ -21,7 +21,8 @@ const routes = {
 const appRoot = document.querySelector("#app-root");
 const params = new URLSearchParams(window.location.search);
 const isLandingFallback = ["/", "/index.html"].includes(window.location.pathname);
-const requestedPage = params.get("page") || (isLandingFallback ? "offline" : "login");
+const pathPage = window.location.pathname.split("/").pop()?.replace(/\.html$/, "");
+const requestedPage = params.get("page") || (routes[pathPage] ? pathPage : isLandingFallback ? "offline" : "login");
 const page = routes[requestedPage] ? requestedPage : "not-found";
 const route = routes[page];
 

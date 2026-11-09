@@ -140,7 +140,9 @@ if (user) {
     </section>
   `);
 
-  await requestServiceNotifications();
+  void requestServiceNotifications().catch((error) => {
+    console.warn("Service notification permission request failed:", error);
+  });
   currentVehicles.forEach(notifyServiceDue);
   restorePendingServiceReminders(currentVehicles);
 

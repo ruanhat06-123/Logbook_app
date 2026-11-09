@@ -1,4 +1,21 @@
 {
+  "rewrites": [
+    { "source": "/html/login.html", "destination": "/html/app.html" },
+    { "source": "/html/dashboard.html", "destination": "/html/app.html" },
+    { "source": "/html/vehicles.html", "destination": "/html/app.html" },
+    { "source": "/html/add-vehicle.html", "destination": "/html/app.html" },
+    { "source": "/html/trip.html", "destination": "/html/app.html" },
+    { "source": "/html/logbook.html", "destination": "/html/app.html" },
+    { "source": "/html/trip-report.html", "destination": "/html/app.html" },
+    { "source": "/html/report.html", "destination": "/html/app.html" },
+    { "source": "/html/settings.html", "destination": "/html/app.html" },
+    { "source": "/html/checkout.html", "destination": "/html/app.html" },
+    { "source": "/html/help.html", "destination": "/html/app.html" },
+    { "source": "/html/reset-password.html", "destination": "/html/app.html" },
+    { "source": "/html/analytics.html", "destination": "/html/app.html" },
+    { "source": "/html/fleet.html", "destination": "/html/app.html" },
+    { "source": "/html/drivers.html", "destination": "/html/app.html" }
+  ],
   "headers": [
     {
       "source": "/(.*)",
